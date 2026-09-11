@@ -408,14 +408,28 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                                         {p.link === "none" &&
                                           <i className="tag warn">Missing CRMid in Projects</i>}
                                         {p.k === "client_mgmt" && <i className="tag mod">management</i>}
+                                        {p.cost != null && p.drev != null && p.dshare === 1 && (
+                                          <i className={"tag m " + band(p.drev ? (p.drev - p.cost) / p.drev : null)}>
+                                            margin {eurK(p.drev - p.cost)}
+                                            {p.drev ? " · " + pct((p.drev - p.cost) / p.drev) : ""}
+                                          </i>
+                                        )}
+                                        {p.cost != null && p.drev != null && p.dshare > 1 && (
+                                          <i className="tag" title={"This deal is delivered by " + p.dshare +
+                                             " projects, so its revenue is not this project's alone"}>
+                                            {p.dshare} projects share this deal
+                                          </i>
+                                        )}
+                                        {p.hours != null && (
+                                          <i className="tag">{Math.round(p.hours).toLocaleString("en-GB")} h</i>
+                                        )}
                                       </em>
                                     </span>
                                     <b className="num">
-                                      {viewer
-                                        ? (p.hours == null ? <span className="pill">no hours</span>
-                                            : Math.round(p.hours).toLocaleString("en-GB") + " h")
-                                        : p.cost == null
+                                      {p.cost == null
                                         ? <span className="pill">{p.k === "client_mgmt" ? "management" : "delivery"}</span>
+                                        : viewer
+                                        ? eurK(p.cost)
                                         : <a href={xlsx("project", p.id)} className="xl"
                                              title="Download the detail workbook for this project"
                                              onClick={(e) => e.stopPropagation()}>{eurK(p.cost)}</a>}
