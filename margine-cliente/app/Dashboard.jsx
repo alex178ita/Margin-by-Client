@@ -20,21 +20,19 @@ const band = (m) => (m == null ? "" : m >= 0.3 ? "g" : m >= 0 ? "a" : "b");
 const SEGMENT_COLORS = ["#0f7173", "#14a19a", "#4bbfae", "#8ad3c4", "#e8c547"];
 
 export default function Dashboard({ snap, warning, token, role, canUnlock }) {
+  const viewer = role === "viewer";
   const xlsx = (type, id) =>
     `/api/xlsx?type=${type}&id=${encodeURIComponent(id)}` + (token ? `&k=${encodeURIComponent(token)}` : "");
   const accrual = snap.accrual && snap.accrual.status === "ok";
 
-  const viewer = role === "viewer";
-
   const years = useMemo(() => {
     const s = new Set();
     for (const c of snap.clients) {
-      if (viewer) { for (const y of Object.keys(c.y || {})) if (y !== "all") s.add(y); continue; }
       for (const y of Object.keys(c.ry || {})) s.add(y);
       if (accrual) for (const y of Object.keys(c.ra || {})) s.add(y);
     }
     return [...s].sort();
-  }, [snap, accrual, viewer]);
+  }, [snap, accrual]);
 
   const [year, setYear] = useState("all");
   const [noExecus, setNoExecus] = useState(false);
@@ -46,27 +44,11 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
   const costPerYear = !!snap.cost_by_year;
   const costUsable = hasCost && (year === "all" || costPerYear);
 
-  // Ogni riga porta due margini: quello di sempre e quello dell'anno scelto.
-  // "All" è da sempre; un anno è la quota di ricavo di competenza di quell'anno
-  // contro le ore lavorate in quell'anno, anche su progetti nati prima.
   const rows = useMemo(() => {
     const query = q.trim().toLowerCase();
     const out = snap.clients
       .filter((c) => !(noExecus && c.c === "Execus"))
       .map((c) => {
-        if (viewer) {
-          const ya = (c.y && c.y.all) || {};
-          const yy = (c.y && c.y[year]) || null;
-          return {
-            ...c,
-            live: year === "all" ? true : !!yy,
-            rev: null, cost: null, margin: null, marginAll: null,
-            hours: yy ? yy.h : null,
-            marginPct: yy ? yy.m : null,
-            marginPctAll: ya.m == null ? null : ya.m,
-            rw: yy ? yy.rw : 0, cw: yy ? yy.cw : 0,
-          };
-        }
         const rev = year === "all" ? c.rt
           : accrual ? (c.ra && c.ra[year]) || 0
           : c.ry[year] || 0;
@@ -79,15 +61,10 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
           : costPerYear ? (c.cy && c.cy[year] ? c.cy[year].hours : 0)
           : null;
         const margin = cost == null ? null : rev - cost;
-        const marginAll = c.cost == null ? null : c.rt - c.cost;
-        return {
-          ...c, rev, cost, hours, margin, marginAll, costAll: c.cost,
-          live: rev !== 0 || (cost || 0) !== 0,
-          marginPct: cost == null || rev === 0 ? null : margin / rev,
-          marginPctAll: c.cost == null || !c.rt ? null : marginAll / c.rt,
-        };
+        const marginPct = cost == null || rev === 0 ? null : margin / rev;
+        return { ...c, rev, cost, hours, margin, marginPct };
       })
-      .filter((c) => c.live)
+      .filter((c) => c.rev !== 0 || (c.cost || 0) !== 0)
       .filter((c) =>
         !query ||
         c.c.toLowerCase().includes(query) ||
@@ -97,12 +74,10 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
     const key = sort.key;
     const val = (r) =>
       key === "cli" ? r.c.toLowerCase()
-      : key === "rev" ? (r.rev == null ? r.rw : r.rev)
+      : key === "rev" ? r.rev
       : key === "cost" ? (r.cost == null ? -Infinity : r.cost)
       : key === "margin" ? (r.margin == null ? -Infinity : r.margin)
       : key === "pct" ? (r.marginPct == null ? -Infinity : r.marginPct)
-      : key === "pctall" ? (r.marginPctAll == null ? -Infinity : r.marginPctAll)
-      : key === "hrs" ? (r.hours == null ? -Infinity : r.hours)
       : key === "inv" ? r.n
       : key === "open" ? r.ob
       : r.pj.length;
@@ -112,45 +87,21 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
       return sort.dir === "asc" ? c : -c;
     });
     return out;
-  }, [snap, year, noExecus, q, sort, hasCost, costPerYear, accrual, viewer]);
+  }, [snap, year, noExecus, q, sort, hasCost, costPerYear, accrual]);
 
-  // In vista ridotta gli importi non arrivano nemmeno al browser, quindi il
-  // totale non si può sommare: si ricava dai pesi. Con R e C totali dell'anno,
-  // il margine di un sottoinsieme è 1 − (C/R)·(Σcw/Σrw), che è esatto.
   const tot = useMemo(() => {
-    if (viewer) {
-      const cr = snap.ratios && snap.ratios[year] ? snap.ratios[year].cr : null;
-      const rw = rows.reduce((s, r) => s + (r.rw || 0), 0);
-      const cw = rows.reduce((s, r) => s + (r.cw || 0), 0);
-      const hours = rows.reduce((s, r) => s + (r.hours || 0), 0);
-      const all = snap.ratios && snap.ratios.all ? snap.ratios.all.cr : null;
-      const rwA = rows.reduce((s, r) => s + ((r.y && r.y.all ? r.y.all.rw : 0) || 0), 0);
-      const cwA = rows.reduce((s, r) => s + ((r.y && r.y.all ? r.y.all.cw : 0) || 0), 0);
-      return {
-        revenue: null, cost: null, margin: null, marginAll: null, hours,
-        marginPct: cr == null || !rw ? null : 1 - cr * (cw / rw),
-        marginPctAll: all == null || !rwA ? null : 1 - all * (cwA / rwA),
-      };
-    }
     const revenue = rows.reduce((s, r) => s + r.rev, 0);
     const cost = costUsable ? rows.reduce((s, r) => s + (r.cost || 0), 0) : null;
     const hours = costUsable ? rows.reduce((s, r) => s + (r.hours || 0), 0) : null;
-    const revAll = rows.reduce((s, r) => s + (r.rt || 0), 0);
-    const costAll = hasCost ? rows.reduce((s, r) => s + (r.costAll || 0), 0) : null;
     return {
-      revenue, cost, hours, revAll,
+      revenue, cost, hours,
       margin: cost == null ? null : revenue - cost,
       marginPct: cost == null || revenue === 0 ? null : (revenue - cost) / revenue,
-      marginAll: costAll == null ? null : revAll - costAll,
-      marginPctAll: costAll == null || !revAll ? null : (revAll - costAll) / revAll,
     };
-  }, [rows, costUsable, viewer, snap, year, hasCost]);
+  }, [rows, costUsable]);
 
-  // La concentrazione è una quota, non un importo: vale anche in vista ridotta.
-  const weight = (r) => (viewer ? (r.rw || 0) : r.rev);
-  const wTot = rows.reduce((s, r) => s + weight(r), 0);
-  const top5 = rows.slice().sort((a, b) => weight(b) - weight(a)).slice(0, 5);
-  const top5Share = wTot ? top5.reduce((s, r) => s + weight(r), 0) / wTot : 0;
+  const top5 = rows.slice().sort((a, b) => b.rev - a.rev).slice(0, 5);
+  const top5Share = tot.revenue ? top5.reduce((s, r) => s + r.rev, 0) / tot.revenue : 0;
 
   const th = (key, label, right) => (
     <th
@@ -202,28 +153,6 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
       </header>
 
       <div className="shell">
-        {/* Quando il CRM non risponde la pagina non si rompe: si svuota. Tipo
-            deal, moduli, owner, CSM e periodi di licenza vengono tutti da lì, e
-            senza un avviso l'unico sintomo è "type not set" scritto ovunque. */}
-        {snap.deals && (snap.deals.error || snap.deals.count === 0) && (
-          <div className="notice">
-            <div>
-              <strong>Deals not loaded from CRM</strong>
-              <p>
-                Deal type, licence modules, owner, CSM and licence periods all come from Zoho CRM,
-                and this run read <b>{snap.deals.count}</b> deals — which is why every deal reads
-                &ldquo;type not set&rdquo;. Revenue and cost are unaffected; the year split falls
-                back to the invoice date.
-              </p>
-              {snap.deals.error && <p className="err">Zoho CRM said: {snap.deals.error}</p>}
-              <p className="err">
-                Open <code>/api/tokeninfo?k=…</code> — the <code>crm_probe</code> section there runs
-                the same query on its own and reports back what Zoho answers.
-              </p>
-            </div>
-          </div>
-        )}
-
         {(warning || !hasCost) && (
           <div className="notice">
             <div>
@@ -285,84 +214,42 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
           )}
         </p>
 
-        {/* Due margini sempre in vista: quello dell'anno scelto e quello di
-            sempre. Senza il secondo, un anno debole su un cliente storicamente
-            buono si legge come un disastro, e viceversa. */}
         <div className="kpis">
-          {viewer ? (
-            <>
-              <div className={"kpi" + (tot.marginPct == null ? " empty" : "")}>
-                <div className="k">Margin % — {year === "all" ? "all time" : year}</div>
-                <div className={"v num " + band(tot.marginPct)}>{pct(tot.marginPct)}</div>
-                <div className="s">
-                  {rows.length} clients ·{" "}
-                  {tot.hours ? Math.round(tot.hours).toLocaleString("en-GB") + " hours logged" : "no hours"}
-                </div>
-              </div>
-              <div className={"kpi" + (tot.marginPctAll == null ? " empty" : "")}>
-                <div className="k">Margin % — all time</div>
-                <div className={"v num " + band(tot.marginPctAll)}>{pct(tot.marginPctAll)}</div>
-                <div className="s">the whole relationship, every year together</div>
-              </div>
-              <div className="kpi">
-                <div className="k">Hours logged</div>
-                <div className="v num">
-                  {tot.hours ? Math.round(tot.hours).toLocaleString("en-GB") : "—"}
-                </div>
-                <div className="s">{year === "all" ? "whole period" : "in " + year}</div>
-              </div>
-              <div className="kpi">
-                <div className="k">Clients</div>
-                <div className="v num">{rows.length}</div>
-                <div className="s">≥ 30% green, &lt; 0 red</div>
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="kpi">
-                <div className="k">
-                  {year === "all" || !accrual ? "Invoiced revenue" : "Accrued revenue"}
-                </div>
-                <div className="v num">{eur(tot.revenue)}</div>
-                <div className="s">{rows.length} clients · {year === "all" ? "whole period" : year}</div>
-              </div>
-              <div className={"kpi" + (costUsable ? "" : " empty")}>
-                <div className="k">Real team cost</div>
-                <div className="v num">{costUsable ? eur(tot.cost) : "pending"}</div>
-                <div className="s">
-                  {costUsable
-                    ? Math.round(tot.hours).toLocaleString("en-GB") + " hours · €" +
-                      (tot.hours ? (tot.cost / tot.hours).toFixed(0) : 0) + "/h blended"
-                    : hasCost ? "per-year breakdown unavailable" : "Zoho Analytics · Time Logs"}
-                </div>
-              </div>
-              <div className={"kpi" + (costUsable ? "" : " empty")}>
-                <div className="k">Margin — {year === "all" ? "all time" : year}</div>
-                <div className={"v num " + band(tot.marginPct)}>{costUsable ? eur(tot.margin) : "—"}</div>
-                <div className="s">
-                  {costUsable ? pct(tot.marginPct) + " of revenue" : "revenue less cost of delivery"}
-                </div>
-              </div>
-              <div className={"kpi" + (hasCost ? "" : " empty")}>
-                <div className="k">Margin — all time</div>
-                <div className={"v num " + band(tot.marginPctAll)}>
-                  {hasCost ? eur(tot.marginAll) : "—"}
-                </div>
-                <div className="s">
-                  {hasCost ? pct(tot.marginPctAll) + " of revenue, every year together" : "≥ 30% green, < 0 red"}
-                </div>
-              </div>
-            </>
-          )}
+          <div className="kpi">
+            <div className="k">
+              {year === "all" || !accrual ? "Invoiced revenue" : "Accrued revenue"}
+            </div>
+            <div className="v num">{eur(tot.revenue)}</div>
+            <div className="s">{rows.length} clients · {year === "all" ? "whole period" : year}</div>
+          </div>
+          <div className={"kpi" + (costUsable ? "" : " empty")}>
+            <div className="k">Real team cost</div>
+            <div className="v num">{costUsable ? eur(tot.cost) : "pending"}</div>
+            <div className="s">
+              {costUsable
+                ? Math.round(tot.hours).toLocaleString("en-GB") + " hours · €" +
+                  (tot.hours ? (tot.cost / tot.hours).toFixed(0) : 0) + "/h blended"
+                : hasCost ? "per-year breakdown unavailable" : "Zoho Analytics · Time Logs"}
+            </div>
+          </div>
+          <div className={"kpi" + (costUsable ? "" : " empty")}>
+            <div className="k">Margin</div>
+            <div className={"v num " + band(tot.marginPct)}>{costUsable ? eur(tot.margin) : "—"}</div>
+            <div className="s">revenue less cost of delivery</div>
+          </div>
+          <div className={"kpi" + (costUsable ? "" : " empty")}>
+            <div className="k">Margin %</div>
+            <div className={"v num " + band(tot.marginPct)}>{costUsable ? pct(tot.marginPct) : "—"}</div>
+            <div className="s">≥ 30% green, &lt; 0 red</div>
+          </div>
         </div>
 
         <div className="conc">
           <h3>Concentration — the top 5 clients account for {pct(top5Share)} of revenue</h3>
           <div className="conc-bar">
             {top5.map((r, i) => (
-              <span key={r.c}
-                    title={r.c + " " + (viewer ? pct(wTot ? weight(r) / wTot : 0) : eur(r.rev))}
-                    style={{ width: (wTot ? (weight(r) / wTot) * 100 : 0) + "%",
+              <span key={r.c} title={r.c + " " + eur(r.rev)}
+                    style={{ width: (tot.revenue ? (r.rev / tot.revenue) * 100 : 0) + "%",
                              background: SEGMENT_COLORS[i] }} />
             ))}
           </div>
@@ -370,7 +257,7 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
             {top5.map((r, i) => (
               <span key={r.c}>
                 <i style={{ background: SEGMENT_COLORS[i] }} />
-                {r.c} <b className="num">{pct(wTot ? weight(r) / wTot : 0)}</b>
+                {r.c} <b className="num">{pct(tot.revenue ? r.rev / tot.revenue : 0)}</b>
               </span>
             ))}
           </div>
@@ -381,14 +268,12 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
             <thead>
               <tr>
                 {th("cli", "Client")}
-                {!viewer && th("rev", year === "all" ? "Revenue" : "Revenue " + year, true)}
-                {!viewer && th("cost", year === "all" ? "Real cost" : "Real cost " + year, true)}
-                {!viewer && th("margin", year === "all" ? "Margin" : "Margin " + year, true)}
-                {th("pct", year === "all" ? "Margin %" : "Margin % " + year, true)}
-                {th("pctall", "Margin % all time", true)}
-                {viewer && th("hrs", "Hours", true)}
+                {th("rev", "Revenue", true)}
+                {th("cost", "Real cost", true)}
+                {th("margin", "Margin", true)}
+                {th("pct", "Margin %", true)}
                 {th("inv", "Inv.", true)}
-                {!viewer && th("open", "Outstanding", true)}
+                {th("open", "Outstanding", true)}
                 {th("prj", "Proj.", true)}
               </tr>
             </thead>
@@ -401,21 +286,19 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                       onClick={() => setOpen(isOpen ? null : r.c)}>
                     <td>
                       <div className="cli">
-                        <a href={xlsx("client", r.c)} className="clidl"
-                           title="Download every costed project behind this client's margin"
-                           onClick={(e) => e.stopPropagation()}>{r.c}</a>
+                        {viewer ? r.c : (
+                          <a href={xlsx("client", r.c)} className="clidl"
+                             title="Download every costed project behind this client's margin"
+                             onClick={(e) => e.stopPropagation()}>{r.c}</a>
+                        )}
                       </div>
                       {via.length > 0 && <div className="via">via {via.join(", ")}</div>}
                     </td>
-                    {!viewer && <td className="r num">{eur(r.rev)}</td>}
-                    {!viewer && (
-                      <td className="r num">{r.cost == null ? <span className="na">—</span> : eur(r.cost)}</td>
-                    )}
-                    {!viewer && (
-                      <td className={"r num " + band(r.marginPct)}>
-                        {r.margin == null ? <span className="na">—</span> : eur(r.margin)}
-                      </td>
-                    )}
+                    <td className="r num">{eur(r.rev)}</td>
+                    <td className="r num">{r.cost == null ? <span className="na">—</span> : eur(r.cost)}</td>
+                    <td className={"r num " + band(r.marginPct)}>
+                      {r.margin == null ? <span className="na">—</span> : eur(r.margin)}
+                    </td>
                     <td className="r">
                       {r.marginPct == null ? <span className="na">—</span> : (
                         <span className="mbar">
@@ -427,52 +310,30 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                         </span>
                       )}
                     </td>
-                    <td className={"r num dim " + band(r.marginPctAll)}>
-                      {r.marginPctAll == null ? <span className="na">—</span> : pct(r.marginPctAll)}
-                    </td>
-                    {viewer && (
-                      <td className="r num">
-                        {r.hours == null ? <span className="na">—</span>
-                          : Math.round(r.hours).toLocaleString("en-GB")}
-                      </td>
-                    )}
                     <td className="r num">{r.n}</td>
-                    {!viewer && (
-                      <td className="r num">{r.ob > 0 ? <b className="b">{eurK(r.ob)}</b> : "—"}</td>
-                    )}
+                    <td className="r num">{r.ob > 0 ? <b className="b">{eurK(r.ob)}</b> : "—"}</td>
                     <td className="r num">{r.pj.length || "—"}</td>
                   </tr>,
                   isOpen && (
                     <tr key={r.c + "-d"} className="detail">
-                      <td colSpan={viewer ? 6 : 9}>
+                      <td colSpan={8}>
                         <div className="det">
                           <div>
-                            <h4>{viewer ? "Margin by year" : "Revenue by year"}</h4>
-                            {!viewer && accrual &&
-                              <div className="dhead"><span /><i>accrued</i><i>invoiced</i></div>}
+                            <h4>Revenue by year</h4>
+                            {accrual && <div className="dhead"><span /><i>accrued</i><i>invoiced</i></div>}
                             <ul>
-                              {viewer
-                                ? Object.keys(r.y || {}).filter((y) => y !== "all").sort().map((y) => (
-                                    <li key={y}>
-                                      <span>{y}</span>
-                                      <b className={"num " + band(r.y[y].m)}>{pct(r.y[y].m)}</b>
-                                      <b className="num dim">
-                                        {r.y[y].h ? Math.round(r.y[y].h).toLocaleString("en-GB") + " h" : "—"}
-                                      </b>
-                                    </li>
-                                  ))
-                                : [...new Set([
-                                    ...Object.keys(r.ra || {}),
-                                    ...Object.keys(r.ry || {}),
-                                  ])].sort().map((y) => (
-                                    <li key={y}>
-                                      <span>{y}</span>
-                                      {accrual && (
-                                        <b className="num">{(r.ra && r.ra[y]) ? eurK(r.ra[y]) : "—"}</b>
-                                      )}
-                                      <b className="num dim">{r.ry[y] ? eurK(r.ry[y]) : "—"}</b>
-                                    </li>
-                                  ))}
+                              {[...new Set([
+                                ...Object.keys(r.ra || {}),
+                                ...Object.keys(r.ry || {}),
+                              ])].sort().map((y) => (
+                                <li key={y}>
+                                  <span>{y}</span>
+                                  {accrual && (
+                                    <b className="num">{(r.ra && r.ra[y]) ? eurK(r.ra[y]) : "—"}</b>
+                                  )}
+                                  <b className="num dim">{r.ry[y] ? eurK(r.ry[y]) : "—"}</b>
+                                </li>
+                              ))}
                             </ul>
                           </div>
                           <div className="wide">
@@ -498,26 +359,15 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                                       {d.csm && <i className={"tag who" + (d.csm_off ? " off" : "")}>
                                         CSM {d.csm}{d.csm_off ? " (disabled)" : ""}</i>}
                                       {d.rev > 0 && <i className="tag warn">
-                                        {d.rev} invoice{d.rev > 1 ? "s" : ""} reversed
-                                        {viewer ? "" : " · " + eurK(d.cn) + " out"}</i>}
+                                        {d.rev} invoice{d.rev > 1 ? "s" : ""} reversed · {eurK(d.cn)} out</i>}
                                     </em>
                                   </span>
                                   <b className="num">
-                                    {viewer
-                                      ? (d.id ? (
-                                          <a href={xlsx("deal", d.id)} className="xl"
-                                             title="Download the detail workbook for this deal"
-                                             onClick={(e) => e.stopPropagation()}>
-                                            {pct(year === "all" ? d.sh : (d.shy ? d.shy[year] : null))}
-                                          </a>
-                                        ) : pct(year === "all" ? d.sh : (d.shy ? d.shy[year] : null)))
-                                      : d.id ? (
-                                        <a href={xlsx("deal", d.id)} className="xl"
-                                           title="Download the detail workbook for this deal"
-                                           onClick={(e) => e.stopPropagation()}>
-                                          {eurK(year === "all" ? d.r : (d.ry ? d.ry[year] || 0 : 0))}
-                                        </a>
-                                      ) : eurK(year === "all" ? d.r : (d.ry ? d.ry[year] || 0 : 0))}
+                                    {d.id && !viewer ? (
+                                      <a href={xlsx("deal", d.id)} className="xl"
+                                         title="Download the detail workbook for this deal"
+                                         onClick={(e) => e.stopPropagation()}>{eurK(d.r)}</a>
+                                    ) : eurK(d.r)}
                                   </b>
                                 </li>
                               ))}
@@ -537,28 +387,7 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                               )}
                               {snap.projects
                                 .filter((p) => r.pj.includes(p.id))
-                                .map((p) => {
-                                  // Il progetto segue l'anno come il cliente:
-                                  // ore e costo dell'anno contro il ricavo di
-                                  // competenza dell'anno del deal che serve.
-                                  const py = viewer ? (p.y && p.y[year]) || null : null;
-                                  const pyA = viewer ? (p.y && p.y.all) || {} : {};
-                                  const pc = viewer ? null
-                                    : year === "all" ? p.cost
-                                    : costPerYear ? (p.cy && p.cy[year] ? p.cy[year].cost : 0) : null;
-                                  const ph = viewer ? (py ? py.h : null)
-                                    : year === "all" ? p.hours
-                                    : costPerYear ? (p.cy && p.cy[year] ? p.cy[year].hours : 0) : null;
-                                  const pr = viewer ? null
-                                    : year === "all" ? p.drev
-                                    : (p.dry ? p.dry[year] || 0 : null);
-                                  const pm = pc == null || pr == null ? null : pr - pc;
-                                  const pmp = viewer ? (py ? py.m : null)
-                                    : pm == null || !pr ? null : pm / pr;
-                                  const pmpAll = viewer ? (pyA.m == null ? null : pyA.m)
-                                    : p.cost == null || !p.drev || p.dshare !== 1 ? null
-                                    : (p.drev - p.cost) / p.drev;
-                                  return (
+                                .map((p) => (
                                   <li key={p.id}
                                       className={p.link === "crmid" || p.link === "deal_name_field" ? "" : "rev"}>
                                     <span className="dl">
@@ -579,44 +408,34 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                                         {p.link === "none" &&
                                           <i className="tag warn">Missing CRMid in Projects</i>}
                                         {p.k === "client_mgmt" && <i className="tag mod">management</i>}
-                                        {pmp != null && p.dshare === 1 && (
-                                          <i className={"tag m " + band(pmp)}>
-                                            margin {pm != null ? eurK(pm) + " · " : ""}{pct(pmp)}
-                                            {year !== "all" ? " in " + year : ""}
+                                        {p.cost != null && p.drev != null && p.dshare === 1 && (
+                                          <i className={"tag m " + band(p.drev ? (p.drev - p.cost) / p.drev : null)}>
+                                            margin {eurK(p.drev - p.cost)}
+                                            {p.drev ? " · " + pct((p.drev - p.cost) / p.drev) : ""}
                                           </i>
                                         )}
-                                        {pmpAll != null && p.dshare === 1 && year !== "all" && (
-                                          <i className={"tag m dim " + band(pmpAll)}>
-                                            {pct(pmpAll)} all time
-                                          </i>
-                                        )}
-                                        {!viewer && pc != null && p.drev != null && p.dshare > 1 && (
+                                        {p.cost != null && p.drev != null && p.dshare > 1 && (
                                           <i className="tag" title={"This deal is delivered by " + p.dshare +
                                              " projects, so its revenue is not this project's alone"}>
                                             {p.dshare} projects share this deal
                                           </i>
                                         )}
-                                        {ph != null && (
-                                          <i className="tag">{Math.round(ph).toLocaleString("en-GB")} h</i>
+                                        {p.hours != null && (
+                                          <i className="tag">{Math.round(p.hours).toLocaleString("en-GB")} h</i>
                                         )}
                                       </em>
                                     </span>
                                     <b className="num">
-                                      {viewer
-                                        ? <a href={xlsx("project", p.id)} className="xl pill"
-                                             title="Download the detail workbook for this project"
-                                             onClick={(e) => e.stopPropagation()}>
-                                            {p.k === "client_mgmt" ? "management" : "delivery"}
-                                          </a>
-                                        : pc == null
+                                      {p.cost == null
                                         ? <span className="pill">{p.k === "client_mgmt" ? "management" : "delivery"}</span>
+                                        : viewer
+                                        ? eurK(p.cost)
                                         : <a href={xlsx("project", p.id)} className="xl"
                                              title="Download the detail workbook for this project"
-                                             onClick={(e) => e.stopPropagation()}>{eurK(pc)}</a>}
+                                             onClick={(e) => e.stopPropagation()}>{eurK(p.cost)}</a>}
                                     </b>
                                   </li>
-                                  );
-                                })}
+                                ))}
                             </ul>
                           </div>
                         </div>
@@ -696,15 +515,6 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
             figures will not add up to it exactly, and that difference is the licence value earned
             outside the window.
           </p>
-          <p style={{ marginTop: 10 }}>
-            <b>The two margins</b>: <b>all time</b> is the whole relationship, every year together,
-            from the first invoice to the last. A <b>year</b> is that year alone — the revenue
-            earned in it against the hours logged in it, including hours on projects that started
-            earlier and are still running. A project begun in 2025 and delivered through 2026 is
-            therefore counted in both, each time for the part that falls in that year, and never
-            twice. Reading them side by side is the point: a weak year on a client with a strong
-            history is a different thing from a client that has never paid for itself.
-          </p>
           {snap.links && snap.links.crmid_missing > 0 && (
             <p style={{ marginTop: 10 }}>
               <b>Deal and project are not always one to one</b>: the link is the{" "}
@@ -762,6 +572,13 @@ function UnlockDialog({ onClose, reason }) {
   const [pw, setPw] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
+
+  // Un pulsante bloccato non sparisce e non porta a una pagina di errore:
+  // chiede la password lì dove sei.
+  const locked = (scope, why, extra) => {
+    if (viewer && canUnlock) { setAsk(why); return; }
+    grab(scope, extra);
+  };
 
   const send = async () => {
     setBusy(true); setErr(null);
@@ -838,13 +655,6 @@ function ExportBar({ token, missing, gaps, view, viewer, canUnlock }) {
     window.setTimeout(() => setMsg(null), 90000);
   };
 
-  // Un pulsante bloccato non sparisce e non porta a una pagina di errore:
-  // chiede la password lì dove sei.
-  const locked = (scope, why, extra) => {
-    if (viewer && canUnlock) { setAsk(why); return; }
-    grab(scope, extra);
-  };
-
   const lock = async () => {
     await fetch("/api/unlock", { method: "DELETE" }).catch(() => {});
     window.location.reload();
@@ -855,8 +665,8 @@ function ExportBar({ token, missing, gaps, view, viewer, canUnlock }) {
       {canUnlock && (viewer ? (
         <div className="lockbar">
           <span>
-            <b>Summary view.</b> Margin as a percentage — for the year and all time — and the hours
-            behind it. Revenue, cost and margin in euro, and who logged those hours, are not here.
+            <b>Summary view.</b> Margins, project costs and total hours are all here. What is not
+            here is who logged those hours and what each person costs.
           </span>
           <button className="xb" onClick={() => setAsk("")}>Unlock internal costs</button>
           <NewTabLink />
@@ -870,7 +680,7 @@ function ExportBar({ token, missing, gaps, view, viewer, canUnlock }) {
       <div className="xb-in">
         <span className="xb-t">
           {viewer
-            ? "Download what you are looking at. The files carry the same figures as the screen: margins as a percentage and hours, no amounts."
+            ? "Download what you are looking at. Hourly costs and the per-person detail behind them are not part of this view."
             : "Download what you are looking at, or the detail behind it — one workbook per deal, one per project, one per client. Deal and project do not always match one to one, so both cuts exist."}
         </span>
         <button className="xb" disabled={busy}

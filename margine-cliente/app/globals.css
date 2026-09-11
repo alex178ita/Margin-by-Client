@@ -420,12 +420,3 @@ button.xb .lk { font-style: normal; margin-left: 6px; font-size: 10px; }
 
 /* Il margine del progetto si legge accanto al nome, col suo colore. */
 .det .tag.m { font-weight: 600; border-color: currentColor; opacity: .95; }
-
-/* Il margine di sempre accanto a quello dell'anno: stessa colonna, un tono
-   più basso, perché è contesto e non la misura che si sta guardando. */
-td.dim { color: var(--ink-3); }
-td.dim.g { color: #2f7a52; }
-td.dim.a { color: #8a6b00; }
-td.dim.b { color: #a33a2a; }
-a.pill { text-decoration: none; }
-a.pill:hover { border-color: var(--teal); color: var(--teal); }

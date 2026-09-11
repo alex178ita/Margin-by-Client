@@ -94,44 +94,7 @@ export async function tokenInfo() {
     analytics_org: ENV("ZOHO_ANALYTICS_ORG_ID", "20070118906"),
     analytics_workspace: ENV("ZOHO_ANALYTICS_WORKSPACE", "86612000000004001"),
     projects_portal: ENV("ZOHO_PROJECTS_PORTAL_ID", "20070118907"),
-    // Una interrogazione vera al CRM, non solo le deleghe dichiarate: se i deal
-    // non arrivano, tipo, moduli, owner e CSM spariscono dalla dashboard senza
-    // che nulla lo dica. Qui l'errore di Zoho si legge per esteso.
-    crm_probe: await probeDeals(),
   };
-}
-
-/** Prova a leggere un deal solo, e riporta com'è andata parola per parola. */
-async function probeDeals() {
-  const q =
-    `select ${DEAL_FIELDS.join(", ")} from Deals ` +
-    `where Modified_Time >= '2015-01-01T00:00:00+01:00' limit 0, 1`;
-  try {
-    const r = await zoho(`${API}/crm/v7/coql`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ select_query: q }),
-    });
-    if (r.status === 204) return { ok: true, rows: 0, note: "the query answered, but with no deal" };
-    const j = await r.json();
-    const d = (j && j.data && j.data[0]) || null;
-    return {
-      ok: !!d,
-      rows: (j && j.data && j.data.length) || 0,
-      fields_returned: d ? Object.keys(d).sort() : [],
-      sample: d ? {
-        name: d.Deal_Name || null,
-        licence: d.Licence ?? null,
-        delivery: d.Delivery ?? null,
-        modules: d.Licence_Modules ?? null,
-        owner: (d.Owner && (d.Owner.name || d.Owner.id)) || null,
-        csm: (d.Customer_Success_Manager &&
-              (d.Customer_Success_Manager.name || d.Customer_Success_Manager.id)) || null,
-      } : null,
-    };
-  } catch (e) {
-    return { ok: false, error: e.message };
-  }
 }
 
 /**
@@ -1067,15 +1030,10 @@ export function assemble(invoices, projects, costs, deals, errors, opts) {
   };
 
   let matched = 0, considered = 0;
-  // Quante fatture portano un deal id e quante di quelle trovano davvero il
-  // deal in CRM: se la seconda è zero mentre la prima non lo è, i deal non sono
-  // arrivati e ogni campo che viene dal CRM resta vuoto.
-  let withDealId = 0, resolvedDeal = 0;
   const inWindow = [];
 
   for (const i of invoices) {
     const deal = i.dealId ? dealById.get(i.dealId) : null;
-    if (i.dealId) { withDealId += 1; if (deal) resolvedDeal += 1; }
     const dealName = (deal && deal.name) || i.dealName || null;
     const [name, partner] = finalClient(i.cust, dealName || "");
     const c = slot(name);
@@ -1107,16 +1065,10 @@ export function assemble(invoices, projects, costs, deals, errors, opts) {
       const e = c.deals.get(key) || {
         id: i.dealId || null, name: dealName || "(deal not named)",
         revenue: 0, credited: 0, invoices: 0, reversed: 0, open: 0,
-        ra: {}, d: deal || null,
+        d: deal || null,
       };
       e.revenue += amount; e.credited += i.credited; e.invoices += 1;
       e.open += i.balance;
-      // Competenza per anno anche a livello di deal: senza, il margine di un
-      // progetto resterebbe quello di sempre mentre sopra si guarda un anno solo.
-      for (const [y, v] of Object.entries(alloc.years)) {
-        if (y < minYear) continue;
-        e.ra[y] = round((e.ra[y] || 0) + v);
-      }
       if (i.reversed) e.reversed += 1;
       c.deals.set(key, e);
     }
@@ -1125,13 +1077,9 @@ export function assemble(invoices, projects, costs, deals, errors, opts) {
   // Quanto ha incassato ogni deal, a prescindere dal cliente: serve a dare un
   // margine ai progetti che a quel deal sono agganciati.
   const dealRevenue = new Map();
-  const dealRevenueByYear = new Map();
   for (const c of clients.values()) {
     for (const [key, e] of c.deals) if (e.id) {
       dealRevenue.set(e.id, round((dealRevenue.get(e.id) || 0) + e.revenue));
-      const by = dealRevenueByYear.get(e.id) || {};
-      for (const [y, v] of Object.entries(e.ra || {})) by[y] = round((by[y] || 0) + v);
-      dealRevenueByYear.set(e.id, by);
     }
   }
   const perDeal = new Map();
@@ -1157,7 +1105,6 @@ export function assemble(invoices, projects, costs, deals, errors, opts) {
       // progetto solo: se sono due o più, il ricavo è di tutti insieme e
       // attribuirlo a uno sarebbe inventare.
       drev: p.dealId ? (dealRevenue.get(p.dealId) ?? null) : null,
-      dry: p.dealId ? (dealRevenueByYear.get(p.dealId) || {}) : null,
       dshare: p.dealId ? (perDeal.get(p.dealId) || 1) : null,
       cy: cst ? Object.fromEntries(Object.entries(cst.byYear || {}).sort()
         .map(([y, b]) => [y, { hours: round(b.hours), cost: round(b.cost) }])) : {},
@@ -1185,9 +1132,6 @@ export function assemble(invoices, projects, costs, deals, errors, opts) {
     rt: round(c.rt), n: c.n, ob: round(c.ob), cn: round(c.cn), rev: c.rev,
     d: [...c.deals.values()].sort((a, b) => b.revenue - a.revenue).slice(0, 8).map((e) => ({
       id: e.id, name: e.name, r: round(e.revenue), cn: round(e.credited),
-      // Ricavo di competenza anno per anno: senza, aprendo un cliente su un
-      // anno solo i deal continuerebbero a mostrare il totale di sempre.
-      ry: Object.fromEntries(Object.entries(e.ra || {}).sort()),
       n: e.invoices, rev: e.reversed, ob: round(e.open),
       kind: e.d ? e.d.kind : null,
       lic: e.d ? e.d.licence : null, del: e.d ? e.d.delivery : null,
@@ -1224,15 +1168,6 @@ export function assemble(invoices, projects, costs, deals, errors, opts) {
       credited: round(inWindow.reduce((s, i) => s + i.credited, 0)),
       reversed_invoices: inWindow.filter((i) => i.reversed).length,
       error: (errors && errors.revenue) || null,
-    },
-    // Stato del lato CRM, in chiaro: tipo deal, moduli, owner, CSM e periodi di
-    // licenza vengono tutti da qui, quindi quando questo tace la pagina si
-    // svuota in silenzio e non c'è modo di capirlo dai numeri.
-    deals: {
-      count: (deals || []).length,
-      invoices_with_deal: withDealId,
-      invoices_deal_found: resolvedDeal,
-      error: (errors && errors.deals) || null,
     },
     cost_status: hasCost ? "ok" : "pending_analytics",
     // Su che tariffe poggia ogni anno, da dire in chiaro in cima alla pagina.
@@ -1305,11 +1240,6 @@ async function buildSnapshotUncached() {
   try {
     deals = await fetchDeals();
   } catch (e) {
-    // Senza i deal cade tutto il lato CRM: tipo, moduli, owner, CSM, periodi di
-    // licenza. Prima questo errore finiva solo in "accrual" e non si vedeva da
-    // nessuna parte se i costi funzionavano: la pagina si limitava a scrivere
-    // "type not set" ovunque, che è il sintomo, non la causa.
-    errors.deals = e.message;
     errors.accrual = e.message;
   }
 

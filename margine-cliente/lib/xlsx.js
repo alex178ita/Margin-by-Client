@@ -186,28 +186,13 @@ function marginBlock(ws, revenueRef, costRef, extraNote) {
   if (extraNote) note(ws, extraNote);
 }
 
-/**
- * Il margine senza importi: la percentuale e le ore, e nient'altro.
- * Riceve i numeri veri ma nel file ne scrive solo il rapporto.
- */
-function marginPctBlock(ws, revenue, cost, hours, extraNote) {
-  band(ws, "MARGIN (before server and infrastructure costs)");
-  kv(ws, "Hours logged", Math.round((hours || 0) * 100) / 100, HRS);
-  kv(ws, "Margin %", revenue ? (revenue - cost) / revenue : null, PCT, null, true);
-  ws.__r++;
-  note(ws, "This margin is before server and infrastructure costs, which are not recorded in Zoho. " +
-           "The only cost taken off is the team's time.");
-  note(ws, "Revenue, cost and margin in euro are part of the internal costs view and are not in this file.");
-  if (extraNote) note(ws, extraNote);
-}
-
 /* --------------------------------------------------------------- sezioni -- */
-function dealBlock(ws, deal, viewer) {
+function dealBlock(ws, deal) {
   band(ws, "DEAL IN CRM");
   kv(ws, "Deal name", deal.name);
   kv(ws, "Open in Zoho CRM", "crm.zoho.eu", null, CRM_DEAL_URL(deal.id));
   kv(ws, "Stage", deal.stage);
-  if (!viewer) kv(ws, "Deal amount (€)", money(deal.amount), EUR);
+  kv(ws, "Deal amount (€)", money(deal.amount), EUR);
   kv(ws, "Closing date", day(deal.closing), dmy);
   if (deal.ls && deal.le) {
     const r = kv(ws, "Licence period", day(deal.ls), dmy);
@@ -222,10 +207,8 @@ function dealBlock(ws, deal, viewer) {
   kv(ws, "Deal type", deal.kind === "licence" ? "Licence"
       : deal.kind === "services" ? "Professional Services" : "not classified in CRM");
   note(ws, "Licence where the CRM Licence field is above zero, Professional Services where Delivery is.");
-  if (!viewer) {
-    kv(ws, "Licence value (€)", money(deal.licence), EUR);
-    kv(ws, "Delivery value (€)", money(deal.delivery), EUR);
-  }
+  kv(ws, "Licence value (€)", money(deal.licence), EUR);
+  kv(ws, "Delivery value (€)", money(deal.delivery), EUR);
   if (deal.both) note(ws, "This deal carries both a Licence and a Delivery value; the type above is the larger of the two.");
   if (deal.kind === "licence") {
     kv(ws, "Licence modules", deal.modules && deal.modules.length ? deal.modules.join(", ") : "none recorded in CRM");
@@ -241,30 +224,8 @@ function dealBlock(ws, deal, viewer) {
   ws.__r++;
 }
 
-function invoiceBlock(ws, invoices, year, viewer) {
+function invoiceBlock(ws, invoices, year) {
   band(ws, "INVOICES RAISED AGAINST THE DEAL (Zoho Books)");
-
-  // Vista ridotta: le fatture ci sono, gli importi no. Resta la quota di
-  // ciascuna sul deal, che dice quanto pesa senza dire quanto vale.
-  if (viewer) {
-    const tot = invoices.reduce((s, i) => s + i.counted, 0);
-    table(ws,
-      ["Invoice", "Date", "Share of the deal", "Credit note", "Payment status"],
-      invoices.map((i) => ({
-        warn: i.credited > 0,
-        cells: [
-          i.num, day(i.date), tot ? i.counted / tot : "",
-          i.cnotes.length ? i.cnotes.map((c) => `${c.num} (${c.date})`).join(", ") : "—",
-          i.balance > 0 ? (i.status || "Open") : (i.status || "Paid"),
-        ],
-      })),
-      { right: [3], formats: [null, dmy, PCT, null, null] });
-    ws.__r++;
-    note(ws, "Rows shaded yellow were reversed by a credit note, so they leave the calculation. " +
-             "Amounts are part of the internal costs view and are not in this file.");
-    return { first: 0, last: 0, total: null };
-  }
-
   const rows = invoices.map((i) => ({
     warn: i.credited > 0,
     cells: [
@@ -325,12 +286,13 @@ function yearBlock(ws, deal, invoices, totalRow, year) {
  * È la versione che vede chi non ha sbloccato i costi interni — i nomi e le
  * tariffe individuali non entrano nemmeno nel file.
  */
-function teamHoursBlock(ws, people, heading) {
-  band(ws, heading || "HOURS LOGGED (Time Logs, Zoho Projects)");
+function teamTotalBlock(ws, people, heading) {
+  band(ws, heading || "HOURS AND COST (Time Logs, Zoho Projects)");
   const hours = people.reduce((s, p) => s + p.hours, 0);
+  const cost = people.reduce((s, p) => s + p.cost, 0);
   const unrated = people.reduce((s, p) => s + p.unrated, 0);
   const hr = kv(ws, "Hours logged", Math.round(hours * 100) / 100, HRS);
-  const cr = hr;
+  const cr = kv(ws, "Cost of those hours (€)", Math.round(cost * 100) / 100, EUR);
   kv(ws, "People who logged time", people.length, INT);
   if (unrated > 0) kv(ws, "Of which hours with no hourly cost", Math.round(unrated * 100) / 100, HRS);
   ws.__r++;
@@ -365,39 +327,12 @@ function peopleBlock(ws, people, heading) {
   return t;
 }
 
-function projectListBlock(ws, projects, heading, opts) {
-  const o = opts || {};
+function projectListBlock(ws, projects, heading) {
   band(ws, heading);
   ws.columns = [
     { width: 38 }, { width: 11 }, { width: 20 }, { width: 30 }, { width: 11 },
     { width: 14 }, { width: 16 }, { width: 14 }, { width: 10 },
   ];
-
-  // Vista ridotta: ore e percentuale di margine, nessun importo.
-  if (o.viewer) {
-    const t = table(ws,
-      ["Project", "Status", "Link to deal", "Deal", "Hours", "Margin %"],
-      projects.map((p) => ({
-        warn: p.link !== "crmid" && p.link !== "deal_name_field",
-        cells: [
-          { text: p.n, hyperlink: PROJECT_URL(p.id) },
-          p.s || "—",
-          p.link === "crmid" ? "CRMid" : p.link === "deal_name_field" ? "Deal Name field"
-            : p.link === "name_guess" ? "name (guess)"
-            : p.link === "name_ambiguous" ? "name (ambiguous)"
-            : p.link === "crmid_unknown" ? "CRMid not found" : "not linked",
-          p.deal ? p.deal.name : "—",
-          p.hours === null ? "" : p.hours,
-          p.dshare === 1 && p.drev && p.cost != null ? (p.drev - p.cost) / p.drev : "",
-        ],
-      })),
-      { right: [5, 6], formats: [null, null, null, null, HRS, PCT], total: [5] });
-    ws.__r++;
-    note(ws, "Margin appears only where a single project delivers the whole deal. Cost and revenue " +
-             "in euro are part of the internal costs view and are not in this file.");
-    return t;
-  }
-
   const rows = projects.map((p) => ({
     warn: p.link !== "crmid" && p.link !== "deal_name_field",
     cells: [
@@ -449,19 +384,16 @@ export async function dealWorkbook(ctx, dealId, role) {
   const projects = ctx.projects.filter((p) => p.dealId === String(dealId));
   const people = mergePeople(ctx, projects.map((p) => p.id));
 
-  const viewer = role === "viewer";
   const wb = await newBook();
   const ws = sheet(wb, "Deal", deal.name,
-    viewer
-      ? "Margin as a percentage, and the hours behind it. Amounts are part of the internal costs view."
-      : "Revenue is the invoice sub-total, net of VAT and net of any credit note that reversed it.");
+    "Revenue is the invoice sub-total, net of VAT and net of any credit note that reversed it.");
 
   if (projects.some((p) => p.link === "name_guess")) {
     warn(ws, "MISSING CRMid IN PROJECTS — one or more projects matched on name, treat as a guess");
   }
 
-  dealBlock(ws, deal, viewer);
-  const inv = invoiceBlock(ws, invoices, ctx.year, viewer);
+  dealBlock(ws, deal);
+  const inv = invoiceBlock(ws, invoices, ctx.year);
   if (inv.total) {
     kv(ws, "Deal amount still to invoice (€)",
        { formula: `${money(deal.amount)}-G${inv.total}` }, EUR);
@@ -471,7 +403,7 @@ export async function dealWorkbook(ctx, dealId, role) {
   }
 
   const list = projects.length
-    ? projectListBlock(ws, projects, "PROJECTS DELIVERING THIS DEAL (Zoho Projects)", { viewer })
+    ? projectListBlock(ws, projects, "PROJECTS DELIVERING THIS DEAL (Zoho Projects)")
     : null;
   if (!projects.length) {
     band(ws, "PROJECTS DELIVERING THIS DEAL (Zoho Projects)");
@@ -480,12 +412,7 @@ export async function dealWorkbook(ctx, dealId, role) {
     ws.__r++;
   }
 
-  if (viewer) {
-    const rev = invoices.reduce((s, i) => s + i.counted, 0);
-    const cost = projects.reduce((s, p) => s + (p.cost || 0), 0);
-    const hours = projects.reduce((s, p) => s + (p.hours || 0), 0);
-    if (projects.length) marginPctBlock(ws, rev, cost, hours);
-  } else if (inv.total && list && list.total) {
+  if (inv.total && list && list.total) {
     marginBlock(ws, `G${inv.total}`, `F${list.total}`);
   }
 
@@ -529,25 +456,12 @@ export async function projectWorkbook(ctx, projectId, role) {
      : "no deal linked");
   ws.__r++;
 
-  const viewer = role === "viewer";
-  const cost = viewer ? teamHoursBlock(ws, people) : peopleBlock(ws, people);
+  const cost = role === "viewer" ? teamTotalBlock(ws, people) : peopleBlock(ws, people);
 
   if (deal) {
-    dealBlock(ws, deal, viewer);
+    dealBlock(ws, deal);
     const invoices = ctx.invoices.filter((i) => i.dealId === deal.id);
-    const inv = invoiceBlock(ws, invoices, ctx.year, viewer);
-    if (viewer) {
-      const others = ctx.projects.filter((x) => x.dealId === deal.id && x.id !== p.id);
-      marginPctBlock(ws,
-        invoices.reduce((s, i) => s + i.counted, 0),
-        p.cost || 0, p.hours || 0,
-        others.length
-          ? "Careful: " + others.length + " other project" + (others.length > 1 ? "s are" : " is") +
-            " linked to the same deal, so the revenue behind this margin is not earned by this " +
-            "project alone. For the deal as a whole, use the deal sheet instead."
-          : null);
-      return wb;
-    }
+    const inv = invoiceBlock(ws, invoices, ctx.year);
     if (inv.total) {
       yearBlock(ws, deal, invoices, inv.total, ctx.year);
       const others = ctx.projects.filter((x) => x.dealId === deal.id && x.id !== p.id);
@@ -574,12 +488,9 @@ export async function clientWorkbook(ctx, clientName, role) {
   const projects = ctx.projects.filter((p) => row.pj.includes(p.id));
   const people = mergePeople(ctx, projects.map((p) => p.id));
 
-  const viewer = role === "viewer";
   const wb = await newBook();
   const ws = sheet(wb, "Summary", row.c,
-    viewer
-      ? "This client's margin as a percentage, year by year and all time, with the hours behind it."
-      : "Everything behind this client's margin: the deals invoiced, the projects costed, and the team.");
+    "Everything behind this client's margin: the deals invoiced, the projects costed, and the team.");
 
   band(ws, "CLIENT");
   kv(ws, "Client", row.c);
@@ -587,81 +498,47 @@ export async function clientWorkbook(ctx, clientName, role) {
   if (row.ba.length) kv(ws, "Invoiced entities", row.ba.join(", "));
   kv(ws, "Invoices counted", row.n, INT);
   if (row.rev) kv(ws, "Invoices reversed by credit notes", row.rev, INT);
-  if (row.cn && !viewer) kv(ws, "Amount reversed by credit notes (€)", row.cn, EUR);
+  if (row.cn) kv(ws, "Amount reversed by credit notes (€)", row.cn, EUR);
   ws.__r++;
 
+  band(ws, "REVENUE AND COST BY YEAR");
   const years = [...new Set([...Object.keys(row.ra), ...Object.keys(row.ry), ...Object.keys(row.cy)])].sort();
+  const yr = table(ws,
+    ["Year", "Accrued revenue (€)", "Invoiced revenue (€)", "Hours", "Cost (€)", "Margin (€)"],
+    years.map((y) => ({
+      cells: [y, money(row.ra[y]), money(row.ry[y]),
+              row.cy[y] ? row.cy[y].hours : 0, row.cy[y] ? row.cy[y].cost : 0,
+              money(row.ra[y]) - (row.cy[y] ? row.cy[y].cost : 0)],
+    })),
+    { right: [2, 3, 4, 5, 6], formats: [null, EUR, EUR, HRS, EUR, EUR], total: [2, 3, 4, 5, 6] });
+  ws.__r++;
+  note(ws, "Accrued revenue spreads each licence invoice day by day across the licence period. " +
+           "Invoiced revenue keeps it on the invoice date, which is what reconciles to Zoho Books.");
 
-  if (viewer) {
-    // Ogni anno per conto suo: il ricavo di competenza di quell'anno contro le
-    // ore lavorate in quell'anno, anche su progetti cominciati prima.
-    band(ws, "MARGIN BY YEAR");
-    table(ws,
-      ["Year", "Margin %", "Hours"],
-      years.map((y) => {
-        const rev = money(row.ra[y]);
-        const cost = row.cy[y] ? row.cy[y].cost : 0;
-        return { cells: [y, rev ? (rev - cost) / rev : "", row.cy[y] ? row.cy[y].hours : 0] };
-      }),
-      { right: [2, 3], formats: [null, PCT, HRS], total: [3] });
-    ws.__r++;
-    note(ws, "Revenue of a year is each licence invoice spread day by day across its licence period, " +
-             "so a licence invoiced up front is split across the years it actually covers.");
-    const list = projectListBlock(ws, projects, "COSTED PROJECTS BEHIND THE MARGIN", { viewer });
-    marginPctBlock(ws, row.rt, row.cost, row.hours,
-      "This is the whole relationship, every year together. The year by year figures are above.");
-  } else {
-    band(ws, "REVENUE AND COST BY YEAR");
-    table(ws,
-      ["Year", "Accrued revenue (€)", "Invoiced revenue (€)", "Hours", "Cost (€)", "Margin (€)", "Margin %"],
-      years.map((y) => {
-        const rev = money(row.ra[y]);
-        const cost = row.cy[y] ? row.cy[y].cost : 0;
-        return {
-          cells: [y, rev, money(row.ry[y]), row.cy[y] ? row.cy[y].hours : 0, cost,
-                  rev - cost, rev ? (rev - cost) / rev : ""],
-        };
-      }),
-      { right: [2, 3, 4, 5, 6, 7], formats: [null, EUR, EUR, HRS, EUR, EUR, PCT],
-        total: [2, 3, 4, 5, 6] });
-    ws.__r++;
-    note(ws, "Accrued revenue spreads each licence invoice day by day across the licence period. " +
-             "Invoiced revenue keeps it on the invoice date, which is what reconciles to Zoho Books.");
-
-    const list = projectListBlock(ws, projects, "COSTED PROJECTS BEHIND THE MARGIN");
-    if (list.total) {
-      marginBlock(ws, String(money(row.rt)), `F${list.total}`,
-        "Revenue here is the whole period, on the invoice date. The year by year split, margin " +
-        "included, is in the table above.");
-    }
+  const list = projectListBlock(ws, projects, "COSTED PROJECTS BEHIND THE MARGIN");
+  if (list.total) {
+    marginBlock(ws, String(money(row.rt)), `F${list.total}`,
+      "Revenue here is the whole period, on the invoice date. The year by year split is in the table above.");
   }
 
   if (row.d && row.d.length) {
     const dws = sheet(wb, "Deals", row.c + " — deals", "The deals invoiced to this client.");
-    const meta = (d) => [
-      d.id ? { text: d.name, hyperlink: CRM_DEAL_URL(d.id) } : d.name,
-      d.kind === "licence" ? "Licence" : d.kind === "services" ? "Professional Services" : "—",
-      d.mods && d.mods.length ? d.mods.join(", ") : "—",
-      d.owner || "—",
-      (d.csm || "—") + (d.csm_off ? " (disabled)" : ""),
-      d.n,
-    ];
-    if (viewer) {
-      table(dws,
-        ["Deal", "Type", "Modules", "Owner", "CSM", "Invoices", "Share of the client"],
-        row.d.map((d) => ({ warn: d.rev > 0, cells: [...meta(d), row.rt ? d.r / row.rt : ""] })),
-        { right: [6, 7], formats: [null, null, null, null, null, INT, PCT] });
-      dws.__r++;
-      note(dws, "Amounts are part of the internal costs view; what stays here is how much of the " +
-                "client each deal accounts for.");
-    } else {
-      table(dws,
-        ["Deal", "Type", "Modules", "Owner", "CSM", "Invoices", "Revenue (€)", "Reversed (€)", "Outstanding (€)"],
-        row.d.map((d) => ({ warn: d.rev > 0, cells: [...meta(d), money(d.r), money(d.cn), money(d.ob)] })),
-        { right: [6, 7, 8, 9], formats: [null, null, null, null, null, INT, EUR, EUR, EUR],
-          total: [6, 7, 8, 9] });
-      dws.__r++;
-    }
+    table(dws,
+      ["Deal", "Type", "Modules", "Owner", "CSM", "Invoices", "Revenue (€)", "Reversed (€)", "Outstanding (€)"],
+      row.d.map((d) => ({
+        warn: d.rev > 0,
+        cells: [
+          d.id ? { text: d.name, hyperlink: CRM_DEAL_URL(d.id) } : d.name,
+          d.kind === "licence" ? "Licence" : d.kind === "services" ? "Professional Services" : "—",
+          d.mods && d.mods.length ? d.mods.join(", ") : "—",
+          d.owner || "—",
+          (d.csm || "—") + (d.csm_off ? " (disabled)" : ""),
+          d.n, money(d.r), money(d.cn), money(d.ob),
+        ],
+      })),
+      { right: [6, 7, 8, 9], formats: [null, null, null, null, null, INT, EUR, EUR, EUR],
+        total: [6, 7, 8, 9] });
+    dws.__r++;
     note(dws, "Rows shaded yellow contain at least one invoice fully reversed by a credit note.");
   }
 
@@ -909,9 +786,8 @@ export async function ratePlanWorkbook(rows, year) {
  * Rispetta anno, ricerca ed esclusione Execus, così quello che scarichi è
  * quello che stai guardando e non una vista diversa con gli stessi nomi.
  */
-export async function dashboardWorkbook(ctx, view, role) {
+export async function dashboardWorkbook(ctx, view) {
   const v = view || {};
-  const viewer = role === "viewer";
   const year = v.year && v.year !== "all" ? String(v.year) : null;
   const snap = ctx.snapshot;
   const accrual = snap.accrual && snap.accrual.status === "ok";
@@ -925,15 +801,7 @@ export async function dashboardWorkbook(ctx, view, role) {
       const cy = c.cy && c.cy[year];
       const cost = !year ? c.cost : perYear ? (cy ? cy.cost : 0) : null;
       const hours = !year ? c.hours : perYear ? (cy ? cy.hours : 0) : null;
-      const margin = cost == null ? null : rev - cost;
-      return {
-        ...c, rev, cost, hours, margin,
-        mp: margin == null || !rev ? null : margin / rev,
-        // Il margine di sempre accanto a quello dell'anno: la stessa coppia che
-        // sta a schermo, così il file e la pagina raccontano la stessa cosa.
-        marginAll: c.cost == null ? null : c.rt - c.cost,
-        mpAll: c.cost == null || !c.rt ? null : (c.rt - c.cost) / c.rt,
-      };
+      return { ...c, rev, cost, hours, margin: cost == null ? null : rev - cost };
     })
     .filter((c) => c.rev !== 0 || (c.cost || 0) !== 0)
     .filter((c) => !q || c.c.toLowerCase().includes(q) ||
@@ -958,107 +826,38 @@ export async function dashboardWorkbook(ctx, view, role) {
   ws.__r++;
 
   band(ws, "CLIENTS");
-  const yl = year || "all time";
-  if (viewer) {
-    // Vista ridotta: due margini in percentuale, le ore, i conteggi. Nessun
-    // importo entra nel file — non è nascosto in una colonna, non c'è proprio.
-    const sum = (f) => rows.reduce((s, r) => s + (f(r) || 0), 0);
-    const R = sum((r) => r.rev), C = sum((r) => r.cost);
-    const RA = sum((r) => r.rt), CA = sum((r) => r.cost == null ? 0 : r.rt - r.marginAll);
-    const t = table(ws,
-      ["Client", "Billed through", `Margin % — ${yl}`, "Margin % — all time", "Hours",
-       "Invoices", "Projects"],
-      rows.map((r) => ({
-        cells: [
-          r.c, r.p.filter((x) => x !== r.c).join(", ") || "—",
-          r.mp == null ? "" : r.mp, r.mpAll == null ? "" : r.mpAll,
-          r.hours == null ? "" : r.hours, r.n, r.pj.length,
-        ],
-      })),
-      { right: [3, 4, 5, 6, 7], formats: [null, null, PCT, PCT, HRS, INT, INT],
-        total: [5, 6, 7] });
-    if (t.total) {
-      // Le percentuali non si sommano: il totale è il margine vero dell'insieme,
-      // calcolato qui e scritto come percentuale.
-      const put = (i, val) => {
-        const c = ws.getCell(t.total, i);
-        c.value = val == null ? "" : val; c.numFmt = PCT;
-      };
-      put(3, R ? (R - C) / R : null);
-      put(4, RA ? (RA - CA) / RA : null);
-    }
-    ws.__r++;
-    note(ws, "This is the summary view: margins as a percentage, hours, and the counts. Revenue, " +
-             "cost and margin in euro are part of the internal costs view and are not in this file.");
-    ws.columns = [{ width: 28 }, { width: 26 }, { width: 18 }, { width: 18 },
-                  { width: 12 }, { width: 11 }, { width: 10 }];
-  } else {
-    const t = table(ws,
-      ["Client", "Billed through", `Revenue — ${yl} (€)`, `Real cost — ${yl} (€)`, "Hours",
-       `Margin — ${yl} (€)`, `Margin % — ${yl}`, "Margin all time (€)", "Margin % all time",
-       "Invoices", "Outstanding (€)", "Projects"],
-      rows.map((r) => ({
-        cells: [
-          r.c, r.p.filter((x) => x !== r.c).join(", ") || "—",
-          money(r.rev), r.cost == null ? "" : money(r.cost), r.hours == null ? "" : r.hours,
-          r.margin == null ? "" : money(r.margin),
-          r.mp == null ? "" : r.mp,
-          r.marginAll == null ? "" : money(r.marginAll),
-          r.mpAll == null ? "" : r.mpAll,
-          r.n, money(r.ob), r.pj.length,
-        ],
-      })),
-      { right: [3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
-        formats: [null, null, EUR, EUR, HRS, EUR, PCT, EUR, PCT, INT, EUR, INT],
-        total: [3, 4, 5, 6, 8, 10, 11, 12] });
-    if (t.total) {
-      const c = ws.getCell(t.total, 7);
-      c.value = { formula: `IF(C${t.total}=0,0,F${t.total}/C${t.total})` };
-      c.numFmt = PCT;
-      const rt = rows.reduce((s, r) => s + (r.rt || 0), 0);
-      const a = ws.getCell(t.total, 9);
-      a.value = rt ? rows.reduce((s, r) => s + (r.marginAll || 0), 0) / rt : "";
-      a.numFmt = PCT;
-    }
-    ws.__r++;
-    note(ws, "Margin is before server and infrastructure costs, which Zoho does not record. Cost is " +
-             "each person's real hourly cost from the payroll in the year the hour was logged.");
-    note(ws, year
-      ? `The first margin covers ${year} alone: revenue of that year against the hours logged in ` +
-        `that year, including on projects that started earlier. The second is the whole ` +
-        `relationship, every year together.`
-      : "All years together. Pick a year on the dashboard to see that year's margin beside this one.");
-    ws.columns = [
-      { width: 28 }, { width: 26 }, { width: 16 }, { width: 16 }, { width: 12 },
-      { width: 16 }, { width: 13 }, { width: 17 }, { width: 15 }, { width: 10 },
-      { width: 15 }, { width: 10 },
-    ];
+  const t = table(ws,
+    ["Client", "Billed through", "Revenue (€)", "Real cost (€)", "Hours", "Margin (€)",
+     "Margin %", "Invoices", "Outstanding (€)", "Projects"],
+    rows.map((r) => ({
+      cells: [
+        r.c, r.p.filter((x) => x !== r.c).join(", ") || "—",
+        money(r.rev), r.cost == null ? "" : money(r.cost), r.hours == null ? "" : r.hours,
+        r.margin == null ? "" : money(r.margin),
+        r.margin == null || !r.rev ? "" : r.margin / r.rev,
+        r.n, money(r.ob), r.pj.length,
+      ],
+    })),
+    { right: [3, 4, 5, 6, 7, 8, 9, 10],
+      formats: [null, null, EUR, EUR, HRS, EUR, PCT, INT, EUR, INT],
+      total: [3, 4, 5, 6, 8, 9, 10] });
+  if (t.total) {
+    const c = ws.getCell(t.total, 7);
+    c.value = { formula: `IF(C${t.total}=0,0,F${t.total}/C${t.total})` };
+    c.numFmt = PCT;
   }
+  ws.__r++;
+  note(ws, "Margin is before server and infrastructure costs, which Zoho does not record. Cost is " +
+           "each person's real hourly cost from the payroll in the year the hour was logged.");
+  ws.columns = [
+    { width: 28 }, { width: 26 }, { width: 15 }, { width: 15 }, { width: 12 },
+    { width: 15 }, { width: 11 }, { width: 11 }, { width: 15 }, { width: 10 },
+  ];
 
   // Secondo foglio: la stessa storia spezzata per anno, che a schermo si vede
   // solo aprendo un cliente alla volta.
   const yrs = [...new Set(ctx.clients.flatMap((c) => [
     ...Object.keys(c.ra || {}), ...Object.keys(c.ry || {}), ...Object.keys(c.cy || {})]))].sort();
-  if (viewer) {
-    const yws = sheet(wb, "By year", "Margin by year",
-      "Each year on its own: the revenue of that year against the hours logged in that year, " +
-      "including on projects that started earlier.");
-    table(yws,
-      ["Client", "Year", "Margin %", "Hours"],
-      ctx.clients.flatMap((c) => yrs
-        .filter((y) => (c.ra && c.ra[y]) || (c.ry && c.ry[y]) || (c.cy && c.cy[y]))
-        .map((y) => {
-          const rev = accrual ? (c.ra && c.ra[y]) || 0 : (c.ry && c.ry[y]) || 0;
-          const cost = c.cy && c.cy[y] ? c.cy[y].cost : 0;
-          return {
-            cells: [c.c, y, rev ? (rev - cost) / rev : "", c.cy && c.cy[y] ? c.cy[y].hours : 0],
-          };
-        })),
-      { right: [3, 4], formats: [null, null, PCT, HRS], total: [4] });
-    yws.columns = [{ width: 28 }, { width: 9 }, { width: 14 }, { width: 12 }];
-    return wb;
-  }
-
   const yws = sheet(wb, "By year", "Revenue, cost and margin by year",
     "Accrued revenue spreads each licence invoice across its licence period. Invoiced revenue keeps " +
     "it on the invoice date, which is what reconciles to Zoho Books.");

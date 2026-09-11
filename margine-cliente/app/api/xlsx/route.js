@@ -66,7 +66,7 @@ export async function GET(request) {
         year: url.searchParams.get("year") || "all",
         q: url.searchParams.get("q") || "",
         noExecus: url.searchParams.get("execus") === "0",
-      }, role);
+      });
       const y = url.searchParams.get("year") || "all";
       return new Response(await wb.xlsx.writeBuffer(), {
         headers: {
