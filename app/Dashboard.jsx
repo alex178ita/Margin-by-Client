@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { LOGO_DATA_URI } from "../lib/logo";
 
 const CRM_DEAL = (id) => `https://crm.zoho.eu/crm/org20069412455/tab/Potentials/${id}`;
@@ -525,6 +525,25 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
 }
 
 /**
+ * Dentro il Web Tab del CRM la dashboard è un iframe, e qualche browser rifiuta
+ * comunque di ricordare lo sblocco. Aprirla in una scheda sua toglie di mezzo
+ * il problema: compare solo quando serve, cioè solo dentro un iframe.
+ */
+function NewTabLink() {
+  const [framed, setFramed] = useState(false);
+  useEffect(() => {
+    try { setFramed(window.self !== window.top); } catch (e) { setFramed(true); }
+  }, []);
+  if (!framed) return null;
+  return (
+    <a className="xb-link" href={typeof window === "undefined" ? "#" : window.location.href}
+       target="_blank" rel="noopener noreferrer">
+      Does not stay unlocked here? Open in its own tab
+    </a>
+  );
+}
+
+/**
  * Sblocco dei costi interni.
  *
  * Di suo la pagina mostra margini, costi per progetto e ore; i nomi delle
@@ -552,12 +571,18 @@ function UnlockDialog({ onClose, reason }) {
     try {
       const r = await fetch("/api/unlock", {
         method: "POST",
+        credentials: "same-origin",
+        cache: "no-store",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ password: pw }),
       });
       const j = await r.json().catch(() => ({}));
       if (!r.ok || !j.ok) throw new Error(j.error || "could not unlock");
-      window.location.reload();
+      // reload() può ripescare la pagina dalla cache del browser, cookie nuovo
+      // o no: un indirizzo leggermente diverso costringe a rifare la richiesta.
+      const u = new URL(window.location.href);
+      u.searchParams.set("u", String(Date.now()));
+      window.location.replace(u.toString());
     } catch (e) { setErr(e.message); setBusy(false); }
   };
 
@@ -630,6 +655,7 @@ function ExportBar({ token, missing, gaps, view, viewer, canUnlock }) {
             here is who logged those hours and what each person costs.
           </span>
           <button className="xb" onClick={() => setAsk("")}>Unlock internal costs</button>
+          <NewTabLink />
         </div>
       ) : (
         <div className="lockbar open">

@@ -1,5 +1,4 @@
 import { checkPassword, unlockCookieValue, COOKIE } from "../../../lib/access";
-import { cookies } from "next/headers";
 
 export const dynamic = "force-dynamic";
 
@@ -28,23 +27,27 @@ export async function POST(request) {
                          { status: 401 });
   }
 
-  // cookies().set invece di comporre l'intestazione a mano: la scrittura del
-  // cookie la fa Next, e non si perde per strada.
-  cookies().set({
-    name: COOKIE,
-    value: unlockCookieValue(),
-    httpOnly: true,
-    secure: true,
-    sameSite: "none",   // la dashboard vive dentro l'iframe del Web Tab del CRM
-    path: "/",
-    maxAge: 28800,
-  });
-  return Response.json({ ok: true });
+  // Dentro il Web Tab la dashboard è un iframe su vercel.app dentro una pagina
+  // zoho.eu: per il browser questo cookie è di terza parte, e Safari li blocca
+  // da anni mentre Chrome li sta dismettendo. `Partitioned` (CHIPS) è la
+  // risposta prevista per questo caso: il cookie esiste, ma in un cassetto
+  // riservato alla coppia zoho.eu + vercel.app, e non serve a tracciare nessuno.
+  // Si scrive a mano perché l'API dei cookie di Next non conosce ancora
+  // quell'attributo. Ne mettiamo due: il secondo per i browser che ignorano
+  // Partitioned e userebbero comunque quello normale.
+  const value = unlockCookieValue();
+  const base = `Path=/; HttpOnly; Secure; SameSite=None; Max-Age=28800`;
+  const res = Response.json({ ok: true });
+  res.headers.append("Set-Cookie", `${COOKIE}=${value}; ${base}; Partitioned`);
+  res.headers.append("Set-Cookie", `${COOKIE}=${value}; ${base}`);
+  return res;
 }
 
 /** Richiude: utile su un computer condiviso. */
 export async function DELETE() {
-  cookies().set({ name: COOKIE, value: "", httpOnly: true, secure: true,
-                  sameSite: "none", path: "/", maxAge: 0 });
-  return Response.json({ ok: true });
+  const base = "Path=/; HttpOnly; Secure; SameSite=None; Max-Age=0";
+  const res = Response.json({ ok: true });
+  res.headers.append("Set-Cookie", `${COOKIE}=; ${base}; Partitioned`);
+  res.headers.append("Set-Cookie", `${COOKIE}=; ${base}`);
+  return res;
 }

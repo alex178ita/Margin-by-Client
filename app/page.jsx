@@ -3,8 +3,9 @@ import seed from "../data/snapshot.json";
 import { buildSnapshot } from "../lib/zoho";
 import { tokenOk, roleFromCookies, redact, unlockAvailable } from "../lib/access";
 
-export const revalidate = 86400;
 export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
+export const revalidate = 0;
 
 export default async function Page({ searchParams }) {
   if (!tokenOk(searchParams?.k)) {
