@@ -26,8 +26,8 @@ export default async function Page({ searchParams }) {
     try {
       snap = await buildSnapshot();
     } catch (e) {
-      warning = "Zoho could not be reached, so there is nothing to show: " + e.message +
-        "  \u2014 if it mentions OAuth, reconnect from /setup?k=<token>.";
+      warning = "Zoho could not be reached, so there is nothing to show.\n" + e.message +
+        "\nFor the raw answer from Analytics on its own, open /api/costdebug?k=<token>.";
     }
   } else {
     warning =
