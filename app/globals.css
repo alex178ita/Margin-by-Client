@@ -384,3 +384,33 @@ button.xb.warn {
   border: 1px solid var(--line); background: var(--surface); color: var(--ink); min-width: 170px;
 }
 .lock-err { flex-basis: 100%; font-size: 12px; color: var(--bad); }
+
+/* Il dialogo della password: si apre dove sei, non ti manda altrove. */
+.modal-wrap {
+  position: fixed; inset: 0; z-index: 50; display: flex;
+  align-items: center; justify-content: center; padding: 20px;
+  background: rgba(13, 27, 42, 0.45);
+}
+.modal {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
+  box-shadow: 0 20px 60px -20px rgba(13, 27, 42, .5); padding: 20px 22px;
+  width: 100%; max-width: 400px;
+}
+.modal h3 { margin: 0 0 8px; font-size: 16px; }
+.modal p { margin: 0 0 14px; font-size: 13px; color: var(--ink-2); line-height: 1.5; }
+.modal input {
+  width: 100%; font: inherit; font-size: 14px; padding: 9px 11px;
+  border: 1px solid var(--line); border-radius: 6px;
+  background: var(--surface); color: var(--ink);
+}
+.modal input:focus-visible { outline: 2px solid var(--teal-2); outline-offset: -1px; }
+.modal-row { margin-top: 14px; display: flex; gap: 8px; }
+.modal-err { margin-top: 8px; font-size: 12.5px; color: var(--bad); }
+
+/* Un pulsante bloccato resta visibile: sapere che una cosa esiste è metà dell'informazione. */
+button.xb.locked { opacity: .75; }
+button.xb .lk { font-style: normal; margin-left: 6px; font-size: 10px; }
+.xb-link {
+  font: inherit; font-size: inherit; padding: 0; border: 0; background: none;
+  color: var(--teal); cursor: pointer; text-decoration: underline;
+}

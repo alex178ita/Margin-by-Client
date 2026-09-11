@@ -172,9 +172,8 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
           </div>
         )}
 
-        {canUnlock && <CostLock viewer={viewer} />}
 
-        <ExportBar token={token} viewer={viewer}
+        <ExportBar token={token} viewer={viewer} canUnlock={canUnlock}
                    missing={(snap.links && snap.links.crmid_missing) || 0}
                    gaps={snap.cost_gaps || null}
                    view={{ year, q, noExecus }} />
@@ -526,15 +525,27 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
 }
 
 /**
- * Sblocco dei costi interni. Di suo la pagina mostra margini e ore; tariffe e
- * dettaglio per persona stanno dietro una password, e il permesso vive in un
- * cookie che dura otto ore — la giornata di lavoro, non di più.
+ * Sblocco dei costi interni.
+ *
+ * Di suo la pagina mostra margini, costi per progetto e ore; i nomi delle
+ * persone e quanto costa ciascuna stanno dietro una password. Il permesso vive
+ * in un cookie che dura otto ore: la giornata di lavoro, non di più.
+ *
+ * Il dialogo si apre sia dal pulsante in alto sia cliccando uno scarico
+ * bloccato: chiedere la password dove serve è meno faticoso che mandare
+ * qualcuno a cercarla da un'altra parte.
  */
-function CostLock({ viewer }) {
-  const [open, setOpen] = useState(false);
+function UnlockDialog({ onClose, reason }) {
   const [pw, setPw] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
+
+  // Un pulsante bloccato non sparisce e non porta a una pagina di errore:
+  // chiede la password lì dove sei.
+  const locked = (scope, why, extra) => {
+    if (viewer && canUnlock) { setAsk(why); return; }
+    grab(scope, extra);
+  };
 
   const send = async () => {
     setBusy(true); setErr(null);
@@ -550,43 +561,31 @@ function CostLock({ viewer }) {
     } catch (e) { setErr(e.message); setBusy(false); }
   };
 
-  const lock = async () => {
-    await fetch("/api/unlock", { method: "DELETE" }).catch(() => {});
-    window.location.reload();
-  };
-
-  if (!viewer) {
-    return (
-      <div className="lockbar open">
-        <span>Internal costs are unlocked on this browser for the next few hours.</span>
-        <button className="xb ghost" onClick={lock}>Lock them again</button>
-      </div>
-    );
-  }
-
   return (
-    <div className="lockbar">
-      <span>
-        Margins and logged hours are shown for every client and project. Hourly costs and the
-        per-person breakdown behind them are not.
-      </span>
-      {open ? (
-        <span className="lock-in">
-          <input type="password" value={pw} autoFocus placeholder="Password"
-                 aria-label="Password for internal costs"
-                 onChange={(e) => setPw(e.target.value)}
-                 onKeyDown={(e) => { if (e.key === "Enter" && pw) send(); }} />
+    <div className="modal-wrap" role="dialog" aria-modal="true" aria-label="Unlock internal costs"
+         onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="modal">
+        <h3>Unlock internal costs</h3>
+        <p>
+          {reason ||
+            "Hourly costs and the per-person breakdown are not part of the standard view."}{" "}
+          Enter the password to see them on this browser for the next eight hours.
+        </p>
+        <input type="password" value={pw} autoFocus placeholder="Password"
+               aria-label="Password for internal costs"
+               onChange={(e) => setPw(e.target.value)}
+               onKeyDown={(e) => {
+                 if (e.key === "Enter" && pw) send();
+                 if (e.key === "Escape") onClose();
+               }} />
+        {err && <div className="modal-err">{err}</div>}
+        <div className="modal-row">
           <button className="xb" disabled={busy || !pw} onClick={send}>
             {busy ? "Checking…" : "Unlock"}
           </button>
-          <button className="xb ghost" disabled={busy} onClick={() => { setOpen(false); setErr(null); }}>
-            Cancel
-          </button>
-        </span>
-      ) : (
-        <button className="xb" onClick={() => setOpen(true)}>Unlock internal costs</button>
-      )}
-      {err && <div className="lock-err">{err}</div>}
+          <button className="xb ghost" disabled={busy} onClick={onClose}>Cancel</button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -596,9 +595,10 @@ function CostLock({ viewer }) {
  * liste di cose da sistemare. Un file per deal e uno per progetto, perché i due
  * tagli non coincidono: deal e progetto non stanno sempre uno a uno.
  */
-function ExportBar({ token, missing, gaps, view, viewer }) {
+function ExportBar({ token, missing, gaps, view, viewer, canUnlock }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
+  const [ask, setAsk] = useState(null);
   const url = (scope, extra) =>
     `/api/xlsx?type=${scope}` + (extra || "") + (token ? "&k=" + encodeURIComponent(token) : "");
 
@@ -630,34 +630,47 @@ function ExportBar({ token, missing, gaps, view, viewer }) {
                   (view.noExecus ? "&execus=0" : ""))}>
           This view (.xlsx)
         </button>
-        {!viewer && <>
-          <button className="xb" disabled={busy} onClick={() => grab("deals")}>Deals (.zip)</button>
-          <button className="xb" disabled={busy} onClick={() => grab("projects")}>Projects (.zip)</button>
-          <button className="xb" disabled={busy} onClick={() => grab("clients")}>Clients (.zip)</button>
-        </>}
+        <button className="xb" disabled={busy} onClick={() => grab("deals")}>Deals (.zip)</button>
+        <button className="xb" disabled={busy} onClick={() => grab("projects")}>Projects (.zip)</button>
+        <button className="xb" disabled={busy} onClick={() => grab("clients")}>Clients (.zip)</button>
         {/* La lista dei progetti da sistemare è una cosa da fare, non un export:
             se non c'è niente da fare, il pulsante non deve nemmeno esistere. */}
-        {!viewer && (missing > 0 ? (
+        {missing > 0 ? (
           <button className="xb warn" disabled={busy} onClick={() => grab("missing")}>
             CRMid Missing List ({missing})
           </button>
         ) : (
           <span className="xb-ok">All projects with CRMid, none missing</span>
-        ))}
-        {!viewer && (
-          <button className="xb ghost" disabled={busy} onClick={() => grab("rateplan", "&year=2026")}>
-            Rate plan 2026 (preview)
-          </button>
         )}
-        {!viewer && (gaps && gaps.hours > 0 ? (
-          <button className="xb warn" disabled={busy} onClick={() => grab("rates")}>
+        <button className={"xb ghost" + (viewer ? " locked" : "")} disabled={busy}
+                onClick={() => locked("rateplan",
+                  "The rate plan lists every person and the hourly cost to write for them.",
+                  "&year=2026")}>
+          Rate plan 2026 (preview)
+          {viewer && <i className="lk" aria-hidden="true">🔒</i>}
+        </button>
+        {gaps && gaps.hours > 0 ? (
+          <button className={"xb warn" + (viewer ? " locked" : "")} disabled={busy}
+                  onClick={() => locked("rates",
+                    "The list of hours with no hourly cost names every person concerned.")}>
             Hourly Rates Missing ({Math.round(gaps.hours).toLocaleString("en-GB")} h)
+            {viewer && <i className="lk" aria-hidden="true">🔒</i>}
           </button>
         ) : (
           <span className="xb-ok">Every logged hour has an hourly cost</span>
-        ))}
+        )}
       </div>
       {msg && <div className="xb-msg">{msg}</div>}
+      {viewer && canUnlock && (
+        <div className="xb-msg">
+          Showing margins, project costs and total hours. Names and what each person costs are
+          behind the password.{" "}
+          <button className="xb-link" onClick={() => setAsk("")}>
+            Unlock internal costs
+          </button>
+        </div>
+      )}
+      {ask !== null && <UnlockDialog reason={ask} onClose={() => setAsk(null)} />}
     </div>
   );
 }

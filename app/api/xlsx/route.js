@@ -30,11 +30,18 @@ export async function GET(request) {
   // Il rifiuto sta qui e non nell'interfaccia: nascondere un pulsante non
   // impedisce a nessuno di scrivere l'indirizzo a mano.
   if (role === "viewer" && FULL_ONLY_EXPORTS.has(type)) {
-    return Response.json({
-      ok: false,
-      error: "This workbook carries hourly costs and per-person detail. Unlock internal costs on " +
-             "the dashboard first.",
-    }, { status: 403 });
+    const msg = "This workbook lists people and what each of them costs, which is not part of the " +
+                "standard view. Unlock internal costs on the dashboard and try again.";
+    // Chi ci arriva scrivendo l'indirizzo merita una frase, non del JSON.
+    if ((request.headers.get("accept") || "").includes("text/html")) {
+      return new Response(
+        `<!doctype html><meta charset="utf-8"><title>Not available</title>` +
+        `<body style="font:14px/1.6 system-ui,sans-serif;max-width:44ch;margin:16vh auto;padding:0 20px;color:#16212b">` +
+        `<h2 style="font-size:17px;margin:0 0 8px">Not available in this view</h2>` +
+        `<p style="color:#48585f">${msg}</p></body>`,
+        { status: 403, headers: { "Content-Type": "text/html; charset=utf-8" } });
+    }
+    return Response.json({ ok: false, error: msg }, { status: 403 });
   }
   const id = url.searchParams.get("id") || "";
 

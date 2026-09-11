@@ -1,4 +1,5 @@
-import { checkPassword, COOKIE } from "../../../lib/access";
+import { checkPassword, unlockCookieValue, COOKIE } from "../../../lib/access";
+import { cookies } from "next/headers";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +13,14 @@ export async function POST(request) {
   let body = {};
   try { body = await request.json(); } catch (e) { /* corpo vuoto */ }
 
+  if (!process.env.COST_PASSWORD) {
+    return Response.json({
+      ok: false,
+      error: "There is no password set on this deployment, so there is nothing to unlock. " +
+             "Add COST_PASSWORD in the Vercel project and redeploy.",
+    }, { status: 501 });
+  }
+
   if (!checkPassword(body.password)) {
     // Una pausa breve: rende noioso provare le password a raffica.
     await new Promise((r) => setTimeout(r, 700));
@@ -19,16 +28,23 @@ export async function POST(request) {
                          { status: 401 });
   }
 
-  const res = Response.json({ ok: true });
-  res.headers.append("Set-Cookie",
-    `${COOKIE}=${encodeURIComponent(String(body.password).trim())}; Path=/; HttpOnly; Secure; ` +
-    "SameSite=None; Max-Age=28800");
-  return res;
+  // cookies().set invece di comporre l'intestazione a mano: la scrittura del
+  // cookie la fa Next, e non si perde per strada.
+  cookies().set({
+    name: COOKIE,
+    value: unlockCookieValue(),
+    httpOnly: true,
+    secure: true,
+    sameSite: "none",   // la dashboard vive dentro l'iframe del Web Tab del CRM
+    path: "/",
+    maxAge: 28800,
+  });
+  return Response.json({ ok: true });
 }
 
 /** Richiude: utile su un computer condiviso. */
 export async function DELETE() {
-  const res = Response.json({ ok: true });
-  res.headers.append("Set-Cookie", `${COOKIE}=; Path=/; HttpOnly; Secure; SameSite=None; Max-Age=0`);
-  return res;
+  cookies().set({ name: COOKIE, value: "", httpOnly: true, secure: true,
+                  sameSite: "none", path: "/", maxAge: 0 });
+  return Response.json({ ok: true });
 }
