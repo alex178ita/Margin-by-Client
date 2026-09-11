@@ -212,12 +212,19 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
         {snap.deals && (snap.deals.error || snap.deals.count === 0) && (
           <div className="notice">
             <div>
-              <strong>Deals not loaded from CRM</strong>
+              <strong>
+                {snap.deals.count === 0 ? "Deals not loaded from CRM"
+                  : snap.deals.stale ? "CRM deals are from an earlier read"
+                  : "CRM deals came back incomplete"}
+              </strong>
               <p>
-                Deal type, licence modules, owner, CSM and licence periods all come from Zoho CRM,
-                and this run read <b>{snap.deals.count}</b> deals — which is why every deal reads
-                &ldquo;type not set&rdquo;. Revenue and cost are unaffected; the year split falls
-                back to the invoice date.
+                Deal type, licence modules, owner, CSM and licence periods all come from Zoho CRM.
+                This run holds <b>{snap.deals.count}</b> deals, and of the{" "}
+                <b>{snap.deals.invoices_with_deal}</b> invoices carrying a deal id,{" "}
+                <b>{snap.deals.invoices_deal_found}</b> found their deal.
+                {snap.deals.count === 0 &&
+                  " That is why every deal reads “type not set”."}{" "}
+                Revenue and cost are unaffected.
               </p>
               {snap.deals.error && <p className="err">Zoho CRM said: {snap.deals.error}</p>}
               <p className="err">
