@@ -1,6 +1,7 @@
 import JSZip from "jszip";
 import { loadDataset, exportTargets } from "../../../lib/dataset";
 import { fetchRatePlan } from "../../../lib/zoho";
+import { tokenOk, roleFromCookies, FULL_ONLY_EXPORTS } from "../../../lib/access";
 import { dealWorkbook, projectWorkbook, clientWorkbook, missingLinkWorkbook, missingRatesWorkbook, ratePlanWorkbook, dashboardWorkbook, fileName } from "../../../lib/xlsx";
 
 export const dynamic = "force-dynamic";
@@ -20,12 +21,21 @@ export const runtime = "nodejs";
  */
 export async function GET(request) {
   const url = new URL(request.url);
-  const gate = process.env.ACCESS_TOKEN;
-  if (gate && url.searchParams.get("k") !== gate) {
+  if (!tokenOk(url.searchParams.get("k"))) {
     return Response.json({ ok: false, error: "not authorised" }, { status: 401 });
   }
+  const role = roleFromCookies();
 
   const type = (url.searchParams.get("type") || "").toLowerCase();
+  // Il rifiuto sta qui e non nell'interfaccia: nascondere un pulsante non
+  // impedisce a nessuno di scrivere l'indirizzo a mano.
+  if (role === "viewer" && FULL_ONLY_EXPORTS.has(type)) {
+    return Response.json({
+      ok: false,
+      error: "This workbook carries hourly costs and per-person detail. Unlock internal costs on " +
+             "the dashboard first.",
+    }, { status: 403 });
+  }
   const id = url.searchParams.get("id") || "";
 
   try {
@@ -73,7 +83,7 @@ export async function GET(request) {
     }
 
     if (type === "deal" || type === "project" || type === "client") {
-      const { wb, name } = await one(ctx, type, id);
+      const { wb, name } = await one(ctx, type, id, role);
       const buf = await wb.xlsx.writeBuffer();
       return new Response(buf, {
         headers: {
@@ -85,7 +95,7 @@ export async function GET(request) {
     }
 
     if (type === "all" || type === "deals" || type === "projects" || type === "clients") {
-      const { zip } = await everything(ctx, type);
+      const { zip } = await everything(ctx, type, role);
       // Una serverless function di Vercel non può restituire più di 4,5 MB:
       // oltre, la risposta viene troncata e il browser riporta solo
       // "Load failed", senza che nei log compaia nulla. Meglio dirlo.
@@ -117,18 +127,18 @@ export async function GET(request) {
   }
 }
 
-async function one(ctx, type, id) {
+async function one(ctx, type, id, role) {
   if (type === "deal") {
-    const wb = await dealWorkbook(ctx, id);
+    const wb = await dealWorkbook(ctx, id, role);
     const d = ctx.dealById.get(String(id));
     return { wb, name: fileName("deal", (d && d.name) || id) };
   }
   if (type === "project") {
-    const wb = await projectWorkbook(ctx, id);
+    const wb = await projectWorkbook(ctx, id, role);
     const p = ctx.projects.find((x) => x.id === String(id));
     return { wb, name: fileName("project", (p && p.n) || id) };
   }
-  const wb = await clientWorkbook(ctx, id);
+  const wb = await clientWorkbook(ctx, id, role);
   return { wb, name: fileName("client", id) };
 }
 
@@ -136,7 +146,7 @@ async function one(ctx, type, id) {
  * Un file per deal e uno per progetto, come chiesto: il taglio per deal e il
  * taglio per progetto non coincidono, quindi si producono entrambi.
  */
-async function everything(ctx, scope) {
+async function everything(ctx, scope, role) {
   const want = (k) => scope === "all" || scope === k;
   const { dealIds, projectIds } = exportTargets(ctx);
   const zip = new JSZip();
@@ -148,7 +158,7 @@ async function everything(ctx, scope) {
 
   if (want("deals")) for (const d of dealIds) {
     try {
-      const wb = await dealWorkbook(ctx, d);
+      const wb = await dealWorkbook(ctx, d, role);
       const deal = ctx.dealById.get(d);
       deals.file(fileName("deal", deal ? deal.name : d), await wb.xlsx.writeBuffer());
       count += 1;
@@ -156,7 +166,7 @@ async function everything(ctx, scope) {
   }
   if (want("projects")) for (const p of projectIds) {
     try {
-      const wb = await projectWorkbook(ctx, p);
+      const wb = await projectWorkbook(ctx, p, role);
       const pr = ctx.projects.find((x) => x.id === p);
       projects.file(fileName("project", pr ? pr.n : p), await wb.xlsx.writeBuffer());
       count += 1;
@@ -164,7 +174,7 @@ async function everything(ctx, scope) {
   }
   if (want("clients")) for (const c of ctx.clients) {
     try {
-      const wb = await clientWorkbook(ctx, c.c);
+      const wb = await clientWorkbook(ctx, c.c, role);
       clients.file(fileName("client", c.c), await wb.xlsx.writeBuffer());
       count += 1;
     } catch (e) { failed.push("client " + c.c + ": " + e.message); }

@@ -1,4 +1,5 @@
 import { applyRatePlan } from "../../../lib/zoho";
+import { tokenOk, roleFromCookies } from "../../../lib/access";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -15,8 +16,7 @@ export const runtime = "nodejs";
  */
 export async function GET(request) {
   const url = new URL(request.url);
-  const gate = process.env.ACCESS_TOKEN;
-  if (gate && url.searchParams.get("k") !== gate) {
+  if (!tokenOk(url.searchParams.get("k")) || roleFromCookies() !== "full") {
     return Response.json({ ok: false, error: "not authorised" }, { status: 401 });
   }
   const year = Number(url.searchParams.get("year")) || new Date().getUTCFullYear();

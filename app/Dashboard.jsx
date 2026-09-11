@@ -19,7 +19,8 @@ const band = (m) => (m == null ? "" : m >= 0.3 ? "g" : m >= 0 ? "a" : "b");
 
 const SEGMENT_COLORS = ["#0f7173", "#14a19a", "#4bbfae", "#8ad3c4", "#e8c547"];
 
-export default function Dashboard({ snap, warning, token }) {
+export default function Dashboard({ snap, warning, token, role, canUnlock }) {
+  const viewer = role === "viewer";
   const xlsx = (type, id) =>
     `/api/xlsx?type=${type}&id=${encodeURIComponent(id)}` + (token ? `&k=${encodeURIComponent(token)}` : "");
   const accrual = snap.accrual && snap.accrual.status === "ok";
@@ -126,7 +127,10 @@ export default function Dashboard({ snap, warning, token }) {
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img className="logo" src={LOGO_DATA_URI} alt="Kleecks" />
             <h1>Margin by Clients <span className="qual">(before infrastructure costs)</span></h1>
-            <div className="beta">v.0.1 — Beta for testing</div>
+            <div className="beta">
+              v.0.1 — Beta for testing
+              {viewer && <span className="viewbadge">summary view</span>}
+            </div>
             {snap.rate_years && (
               <ul className="rateyears">
                 {Object.entries(snap.rate_years).map(([y, c]) => (
@@ -168,7 +172,10 @@ export default function Dashboard({ snap, warning, token }) {
           </div>
         )}
 
-        <ExportBar token={token} missing={(snap.links && snap.links.crmid_missing) || 0}
+        {canUnlock && <CostLock viewer={viewer} />}
+
+        <ExportBar token={token} viewer={viewer}
+                   missing={(snap.links && snap.links.crmid_missing) || 0}
                    gaps={snap.cost_gaps || null}
                    view={{ year, q, noExecus }} />
 
@@ -280,9 +287,11 @@ export default function Dashboard({ snap, warning, token }) {
                       onClick={() => setOpen(isOpen ? null : r.c)}>
                     <td>
                       <div className="cli">
-                        <a href={xlsx("client", r.c)} className="clidl"
-                           title="Download every costed project behind this client's margin"
-                           onClick={(e) => e.stopPropagation()}>{r.c}</a>
+                        {viewer ? r.c : (
+                          <a href={xlsx("client", r.c)} className="clidl"
+                             title="Download every costed project behind this client's margin"
+                             onClick={(e) => e.stopPropagation()}>{r.c}</a>
+                        )}
                       </div>
                       {via.length > 0 && <div className="via">via {via.join(", ")}</div>}
                     </td>
@@ -355,7 +364,7 @@ export default function Dashboard({ snap, warning, token }) {
                                     </em>
                                   </span>
                                   <b className="num">
-                                    {d.id ? (
+                                    {d.id && !viewer ? (
                                       <a href={xlsx("deal", d.id)} className="xl"
                                          title="Download the detail workbook for this deal"
                                          onClick={(e) => e.stopPropagation()}>{eurK(d.r)}</a>
@@ -403,7 +412,10 @@ export default function Dashboard({ snap, warning, token }) {
                                       </em>
                                     </span>
                                     <b className="num">
-                                      {p.cost == null
+                                      {viewer
+                                        ? (p.hours == null ? <span className="pill">no hours</span>
+                                            : Math.round(p.hours).toLocaleString("en-GB") + " h")
+                                        : p.cost == null
                                         ? <span className="pill">{p.k === "client_mgmt" ? "management" : "delivery"}</span>
                                         : <a href={xlsx("project", p.id)} className="xl"
                                              title="Download the detail workbook for this project"
@@ -463,7 +475,7 @@ export default function Dashboard({ snap, warning, token }) {
             these figures as a contribution margin on delivery effort, not as net margin: the real
             profitability of every client sits below the number shown here, by an amount this page
             has no way to measure.
-            {snap.cost_gaps && snap.cost_gaps.hours > 0 && (
+            {!viewer && snap.cost_gaps && snap.cost_gaps.hours > 0 && (
               <> Separately, <b>{Math.round(snap.cost_gaps.hours).toLocaleString("en-GB")} hours</b>{" "}
                 across {snap.cost_gaps.projects} client projects were logged at a zero hourly cost,
                 so they cost nothing here — worth roughly{" "}
@@ -514,11 +526,77 @@ export default function Dashboard({ snap, warning, token }) {
 }
 
 /**
+ * Sblocco dei costi interni. Di suo la pagina mostra margini e ore; tariffe e
+ * dettaglio per persona stanno dietro una password, e il permesso vive in un
+ * cookie che dura otto ore — la giornata di lavoro, non di più.
+ */
+function CostLock({ viewer }) {
+  const [open, setOpen] = useState(false);
+  const [pw, setPw] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+
+  const send = async () => {
+    setBusy(true); setErr(null);
+    try {
+      const r = await fetch("/api/unlock", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: pw }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j.ok) throw new Error(j.error || "could not unlock");
+      window.location.reload();
+    } catch (e) { setErr(e.message); setBusy(false); }
+  };
+
+  const lock = async () => {
+    await fetch("/api/unlock", { method: "DELETE" }).catch(() => {});
+    window.location.reload();
+  };
+
+  if (!viewer) {
+    return (
+      <div className="lockbar open">
+        <span>Internal costs are unlocked on this browser for the next few hours.</span>
+        <button className="xb ghost" onClick={lock}>Lock them again</button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="lockbar">
+      <span>
+        Margins and logged hours are shown for every client and project. Hourly costs and the
+        per-person breakdown behind them are not.
+      </span>
+      {open ? (
+        <span className="lock-in">
+          <input type="password" value={pw} autoFocus placeholder="Password"
+                 aria-label="Password for internal costs"
+                 onChange={(e) => setPw(e.target.value)}
+                 onKeyDown={(e) => { if (e.key === "Enter" && pw) send(); }} />
+          <button className="xb" disabled={busy || !pw} onClick={send}>
+            {busy ? "Checking…" : "Unlock"}
+          </button>
+          <button className="xb ghost" disabled={busy} onClick={() => { setOpen(false); setErr(null); }}>
+            Cancel
+          </button>
+        </span>
+      ) : (
+        <button className="xb" onClick={() => setOpen(true)}>Unlock internal costs</button>
+      )}
+      {err && <div className="lock-err">{err}</div>}
+    </div>
+  );
+}
+
+/**
  * La barra degli scarichi: la vista corrente, i fogli di dettaglio, e le due
  * liste di cose da sistemare. Un file per deal e uno per progetto, perché i due
  * tagli non coincidono: deal e progetto non stanno sempre uno a uno.
  */
-function ExportBar({ token, missing, gaps, view }) {
+function ExportBar({ token, missing, gaps, view, viewer }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
   const url = (scope, extra) =>
@@ -542,8 +620,9 @@ function ExportBar({ token, missing, gaps, view }) {
     <div className="exportbar">
       <div className="xb-in">
         <span className="xb-t">
-          Download what you are looking at, or the detail behind it — one workbook per deal, one per
-          project, one per client. Deal and project do not always match one to one, so both cuts exist.
+          {viewer
+            ? "Download what you are looking at. Hourly costs and the per-person detail behind them are not part of this view."
+            : "Download what you are looking at, or the detail behind it — one workbook per deal, one per project, one per client. Deal and project do not always match one to one, so both cuts exist."}
         </span>
         <button className="xb" disabled={busy}
                 onClick={() => grab("dashboard", "&year=" + encodeURIComponent(view.year) +
@@ -551,28 +630,32 @@ function ExportBar({ token, missing, gaps, view }) {
                   (view.noExecus ? "&execus=0" : ""))}>
           This view (.xlsx)
         </button>
-        <button className="xb" disabled={busy} onClick={() => grab("deals")}>Deals (.zip)</button>
-        <button className="xb" disabled={busy} onClick={() => grab("projects")}>Projects (.zip)</button>
-        <button className="xb" disabled={busy} onClick={() => grab("clients")}>Clients (.zip)</button>
+        {!viewer && <>
+          <button className="xb" disabled={busy} onClick={() => grab("deals")}>Deals (.zip)</button>
+          <button className="xb" disabled={busy} onClick={() => grab("projects")}>Projects (.zip)</button>
+          <button className="xb" disabled={busy} onClick={() => grab("clients")}>Clients (.zip)</button>
+        </>}
         {/* La lista dei progetti da sistemare è una cosa da fare, non un export:
             se non c'è niente da fare, il pulsante non deve nemmeno esistere. */}
-        {missing > 0 ? (
+        {!viewer && (missing > 0 ? (
           <button className="xb warn" disabled={busy} onClick={() => grab("missing")}>
             CRMid Missing List ({missing})
           </button>
         ) : (
           <span className="xb-ok">All projects with CRMid, none missing</span>
+        ))}
+        {!viewer && (
+          <button className="xb ghost" disabled={busy} onClick={() => grab("rateplan", "&year=2026")}>
+            Rate plan 2026 (preview)
+          </button>
         )}
-        <button className="xb ghost" disabled={busy} onClick={() => grab("rateplan", "&year=2026")}>
-          Rate plan 2026 (preview)
-        </button>
-        {gaps && gaps.hours > 0 ? (
+        {!viewer && (gaps && gaps.hours > 0 ? (
           <button className="xb warn" disabled={busy} onClick={() => grab("rates")}>
             Hourly Rates Missing ({Math.round(gaps.hours).toLocaleString("en-GB")} h)
           </button>
         ) : (
           <span className="xb-ok">Every logged hour has an hourly cost</span>
-        )}
+        ))}
       </div>
       {msg && <div className="xb-msg">{msg}</div>}
     </div>

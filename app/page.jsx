@@ -1,13 +1,13 @@
 import Dashboard from "./Dashboard";
 import seed from "../data/snapshot.json";
 import { buildSnapshot } from "../lib/zoho";
+import { tokenOk, roleFromCookies, redact, unlockAvailable } from "../lib/access";
 
 export const revalidate = 86400;
 export const dynamic = "force-dynamic";
 
 export default async function Page({ searchParams }) {
-  const gate = process.env.ACCESS_TOKEN;
-  if (gate && (searchParams?.k || "") !== gate) {
+  if (!tokenOk(searchParams?.k)) {
     return (
       <div className="gate">
         <h2>Not authorised</h2>
@@ -36,5 +36,15 @@ export default async function Page({ searchParams }) {
   }
 
   // Il token serve anche ai link di export: stessa porta, stesso lucchetto.
-  return <Dashboard snap={snap} warning={warning} token={searchParams?.k || ""} />;
+  // La vista ridotta viene tagliata qui, sul server: al browser non arriva.
+  const role = roleFromCookies();
+  return (
+    <Dashboard
+      snap={role === "viewer" ? redact(snap) : snap}
+      warning={warning}
+      role={role}
+      canUnlock={unlockAvailable()}
+      token={searchParams?.k || ""}
+    />
+  );
 }

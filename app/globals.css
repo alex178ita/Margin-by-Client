@@ -361,3 +361,26 @@ button.xb.warn {
 }
 .rateyears li.fixed { color: #6fd3c6; border-color: rgba(111,211,198,.5); }
 .rateyears li.inherited { color: var(--gold); border-color: rgba(232,197,71,.45); }
+
+/* Si deve capire a colpo d'occhio in che vista si sta. */
+.viewbadge {
+  margin-left: 8px; font-style: normal; font-size: 10px; letter-spacing: .07em;
+  text-transform: uppercase; padding: 2px 7px; border-radius: 999px;
+  border: 1px solid rgba(232,197,71,.5); color: var(--gold);
+}
+
+/* Lo sblocco dei costi interni sta sopra a tutto: è la prima cosa da capire. */
+.lockbar {
+  margin: 18px 0 12px; padding: 10px 14px; border-radius: var(--radius);
+  border: 1px solid var(--line); border-left: 3px solid var(--gold);
+  background: var(--surface); display: flex; flex-wrap: wrap; gap: 10px;
+  align-items: center; font-size: 12.5px; color: var(--ink-2);
+}
+.lockbar > span:first-child { margin-right: auto; max-width: 72ch; }
+.lockbar.open { border-left-color: var(--ok); }
+.lock-in { display: inline-flex; gap: 8px; align-items: center; }
+.lock-in input {
+  font: inherit; font-size: 12.5px; padding: 6px 9px; border-radius: 6px;
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink); min-width: 170px;
+}
+.lock-err { flex-basis: 100%; font-size: 12px; color: var(--bad); }
