@@ -1,6 +1,7 @@
 import JSZip from "jszip";
 import { loadDataset, exportTargets } from "../../../lib/dataset";
-import { dealWorkbook, projectWorkbook, clientWorkbook, missingLinkWorkbook, missingRatesWorkbook, fileName } from "../../../lib/xlsx";
+import { fetchRatePlan } from "../../../lib/zoho";
+import { dealWorkbook, projectWorkbook, clientWorkbook, missingLinkWorkbook, missingRatesWorkbook, ratePlanWorkbook, fileName } from "../../../lib/xlsx";
 import { sendZip, mailConfigured } from "../../../lib/mail";
 
 export const dynamic = "force-dynamic";
@@ -14,6 +15,7 @@ export const runtime = "nodejs";
  *   /api/xlsx?k=<token>&type=client&id=<client name>
  *   /api/xlsx?k=<token>&type=missing            -> progetti senza CRMid
  *   /api/xlsx?k=<token>&type=rates              -> ore a tariffa zero
+ *   /api/xlsx?k=<token>&type=rateplan&year=2026 -> anteprima allineamento tariffe
  *   /api/xlsx?k=<token>&type=all               -> zip
  *   /api/xlsx?k=<token>&type=all&email=<addr>  -> zip via email
  */
@@ -29,6 +31,19 @@ export async function GET(request) {
   const email = (url.searchParams.get("email") || "").trim();
 
   try {
+    // L'anteprima tariffe non ha bisogno dell'intero dataset: una query sola.
+    if (type === "rateplan") {
+      const year = Number(url.searchParams.get("year")) || new Date().getUTCFullYear();
+      const wb = await ratePlanWorkbook(await fetchRatePlan(year), year);
+      return new Response(await wb.xlsx.writeBuffer(), {
+        headers: {
+          "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          "Content-Disposition": `attachment; filename="rate_plan_${year}.xlsx"`,
+          "Cache-Control": "no-store",
+        },
+      });
+    }
+
     const ctx = await loadDataset();
 
     if (type === "missing" || type === "rates") {

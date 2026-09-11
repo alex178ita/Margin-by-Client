@@ -518,16 +518,16 @@ function ExportBar({ token, missing, gaps }) {
   const [ask, setAsk] = useState(false);
   const [email, setEmail] = useState("");
   const [msg, setMsg] = useState(null);
-  const url = (scope) =>
-    `/api/xlsx?type=${scope}` + (token ? "&k=" + encodeURIComponent(token) : "");
+  const url = (scope, extra) =>
+    `/api/xlsx?type=${scope}` + (extra || "") + (token ? "&k=" + encodeURIComponent(token) : "");
 
   // Il download va lasciato al browser: tirare giù lo zip con fetch e tenerlo
   // in memoria come blob è proprio ciò che falliva, e l'errore che arrivava
   // ("Load failed") non diceva niente. Un link normale lo scarica in streaming.
-  const grab = (scope) => {
+  const grab = (scope, extra) => {
     setMsg("Building the workbooks — the download starts on its own, it takes a minute.");
     const a = document.createElement("a");
-    a.href = url(scope);
+    a.href = url(scope, extra);
     a.rel = "noopener";
     document.body.appendChild(a); a.click(); a.remove();
     // Il browser non avvisa quando il download parte, quindi l'avviso si
@@ -568,6 +568,9 @@ function ExportBar({ token, missing, gaps }) {
         ) : (
           <span className="xb-ok">All projects with CRMid, none missing</span>
         )}
+        <button className="xb ghost" disabled={busy} onClick={() => grab("rateplan", "&year=2026")}>
+          Rate plan 2026 (preview)
+        </button>
         {gaps && gaps.hours > 0 ? (
           <button className="xb warn" disabled={busy} onClick={() => grab("rates")}>
             Hourly Rates Missing ({Math.round(gaps.hours).toLocaleString("en-GB")} h)
