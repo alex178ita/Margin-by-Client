@@ -53,6 +53,10 @@ export default function SetupForm({ k }) {
         <code className="scopes">
           ZohoBooks.invoices.READ,ZohoProjects.portals.READ,ZohoProjects.projects.READ,ZohoAnalytics.data.read,ZohoCRM.coql.READ,ZohoCRM.modules.deals.READ
         </code>
+        <span>
+          <code>ZohoProjects.users.UPDATE</code> is the only one that writes anything: it lets the
+          rate plan set the hourly cost on a project. Leave it out and everything else still works.
+        </span>
         <span>Valid for 10 minutes. Copy the code and paste it here <b>straight away</b>.</span>
         <input id="code" value={code} onChange={(e) => setCode(e.target.value)}
                placeholder="1000.XXXXXXXX..." autoComplete="off" required />
