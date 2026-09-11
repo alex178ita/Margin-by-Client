@@ -529,7 +529,7 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                                   const psh = pr != null && r.rev ? pr / r.rev : null;
                                   return (
                                   <li key={p.id}
-                                      className={p.link === "crmid" || p.link === "deal_name_field" ? "" : "rev"}>
+                                      className={p.link === "crmid" || p.link === "deal_name_field" ? "" : "link"}>
                                     <span className="dl">
                                       <a href={PROJECT(p.id)} target="_blank" rel="noopener noreferrer"
                                          title={"Open " + p.n + " in Zoho Projects"}
@@ -605,6 +605,31 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                                 })}
                             </ul>
                           </div>
+                          {(() => {
+                            // La legenda compare solo per le segnalazioni che
+                            // questo cliente ha davvero: una legenda che spiega
+                            // colori assenti è rumore.
+                            const anyRev = r.d.some((d) => d.rev > 0);
+                            const anyLink = snap.projects.some((p) => r.pj.includes(p.id) &&
+                              p.link !== "crmid" && p.link !== "deal_name_field");
+                            if (!anyRev && !anyLink) return null;
+                            return (
+                              <div className="legend">
+                                {anyRev && (
+                                  <span>
+                                    <i className="sw-rev" />
+                                    invoice reversed by a credit note — out of the revenue
+                                  </span>
+                                )}
+                                {anyLink && (
+                                  <span>
+                                    <i className="sw-link" />
+                                    link to the deal not from CRMid — costed, revenue uncertain
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </div>
                       </td>
                     </tr>
