@@ -28,12 +28,16 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
 
   const years = useMemo(() => {
     const s = new Set();
+    const min = String(snap.min_year || "2025");
     for (const c of snap.clients) {
       if (viewer) { for (const y of Object.keys(c.y || {})) if (y !== "all") s.add(y); continue; }
       for (const y of Object.keys(c.ry || {})) s.add(y);
       if (accrual) for (const y of Object.keys(c.ra || {})) s.add(y);
     }
-    return [...s].sort();
+    // Il selettore parte dall'anno da cui la dashboard conta: prima di quello
+    // non c'è né ricavo né costo, e un pulsante che apre una vista vuota è solo
+    // un modo per far dubitare del resto.
+    return [...s].filter((y) => y >= min).sort();
   }, [snap, accrual, viewer]);
 
   const [year, setYear] = useState("all");
