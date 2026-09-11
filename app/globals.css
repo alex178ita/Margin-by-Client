@@ -164,7 +164,12 @@ th {
 }
 th.r, td.r { text-align: right; }
 th[aria-sort] { color: var(--ink); }
-th .arw { opacity: 0.5; margin-left: 3px; }
+/* La freccia c'è sempre, spenta: senza, che si possa ordinare non si vede. */
+th .arw { opacity: 0.25; margin-left: 4px; font-size: 9px; }
+th:hover { color: var(--ink); background: var(--line-soft); }
+th:hover .arw { opacity: 0.6; }
+th.sorted { color: var(--ink); }
+th.sorted .arw { opacity: 0.9; color: var(--teal-2); }
 td { padding: 9px 12px; border-bottom: 1px solid var(--line-soft); vertical-align: middle; }
 tbody tr { cursor: pointer; }
 tbody tr:hover td { background: var(--surface-2); }
@@ -278,11 +283,6 @@ button.xb {
 }
 button.xb.ghost { background: var(--surface); color: var(--teal); }
 button.xb:disabled { opacity: .55; cursor: default; }
-.xb-mail { display: inline-flex; gap: 8px; align-items: center; }
-.xb-mail input {
-  font: inherit; font-size: 12.5px; padding: 6px 9px; border-radius: 6px;
-  border: 1px solid var(--line); min-width: 210px; background: var(--surface); color: var(--ink);
-}
 .xb-msg { margin-top: 8px; font-size: 12px; color: var(--ink-2); }
 
 /* Nome cliente e valori cliccabili: aprono il foglio di dettaglio. */

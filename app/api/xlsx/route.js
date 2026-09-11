@@ -1,8 +1,7 @@
 import JSZip from "jszip";
 import { loadDataset, exportTargets } from "../../../lib/dataset";
 import { fetchRatePlan } from "../../../lib/zoho";
-import { dealWorkbook, projectWorkbook, clientWorkbook, missingLinkWorkbook, missingRatesWorkbook, ratePlanWorkbook, fileName } from "../../../lib/xlsx";
-import { sendZip, mailConfigured } from "../../../lib/mail";
+import { dealWorkbook, projectWorkbook, clientWorkbook, missingLinkWorkbook, missingRatesWorkbook, ratePlanWorkbook, dashboardWorkbook, fileName } from "../../../lib/xlsx";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -13,11 +12,11 @@ export const runtime = "nodejs";
  *   /api/xlsx?k=<token>&type=deal&id=<dealId>
  *   /api/xlsx?k=<token>&type=project&id=<projectId>
  *   /api/xlsx?k=<token>&type=client&id=<client name>
+ *   /api/xlsx?k=<token>&type=dashboard&year=..  -> la dashboard come la vedi
  *   /api/xlsx?k=<token>&type=missing            -> progetti senza CRMid
  *   /api/xlsx?k=<token>&type=rates              -> ore a tariffa zero
  *   /api/xlsx?k=<token>&type=rateplan&year=2026 -> anteprima allineamento tariffe
  *   /api/xlsx?k=<token>&type=all               -> zip
- *   /api/xlsx?k=<token>&type=all&email=<addr>  -> zip via email
  */
 export async function GET(request) {
   const url = new URL(request.url);
@@ -28,7 +27,6 @@ export async function GET(request) {
 
   const type = (url.searchParams.get("type") || "").toLowerCase();
   const id = url.searchParams.get("id") || "";
-  const email = (url.searchParams.get("email") || "").trim();
 
   try {
     // L'anteprima tariffe non ha bisogno dell'intero dataset: una query sola.
@@ -45,6 +43,22 @@ export async function GET(request) {
     }
 
     const ctx = await loadDataset();
+
+    if (type === "dashboard") {
+      const wb = await dashboardWorkbook(ctx, {
+        year: url.searchParams.get("year") || "all",
+        q: url.searchParams.get("q") || "",
+        noExecus: url.searchParams.get("execus") === "0",
+      });
+      const y = url.searchParams.get("year") || "all";
+      return new Response(await wb.xlsx.writeBuffer(), {
+        headers: {
+          "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          "Content-Disposition": `attachment; filename="margin_by_clients_${y}.xlsx"`,
+          "Cache-Control": "no-store",
+        },
+      });
+    }
 
     if (type === "missing" || type === "rates") {
       const wb = type === "rates" ? await missingRatesWorkbook(ctx) : await missingLinkWorkbook(ctx);
@@ -71,27 +85,16 @@ export async function GET(request) {
     }
 
     if (type === "all" || type === "deals" || type === "projects" || type === "clients") {
-      const { zip, count } = await everything(ctx, type);
+      const { zip } = await everything(ctx, type);
       // Una serverless function di Vercel non può restituire più di 4,5 MB:
       // oltre, la risposta viene troncata e il browser riporta solo
       // "Load failed", senza che nei log compaia nulla. Meglio dirlo.
-      if (!email && zip.length > 4_000_000) {
+      if (zip.length > 4_000_000) {
         return Response.json({
           ok: false,
           error: `That selection is ${(zip.length / 1048576).toFixed(1)} MB and a download can carry at ` +
-                 "most 4.5 MB. Download the three sets separately, or have them emailed instead.",
+                 "most 4.5 MB. Download the three sets separately.",
         }, { status: 413 });
-      }
-      if (email) {
-        if (!mailConfigured()) {
-          return Response.json({
-            ok: false,
-            error: "Email is not configured on this deployment. Set RESEND_API_KEY and MAIL_FROM " +
-                   "in the Vercel project, or use the download instead.",
-          }, { status: 501 });
-        }
-        await sendZip(email, zip, count);
-        return Response.json({ ok: true, sent: email, files: count });
       }
       const stamp = new Date().toISOString().slice(0, 10);
       const label = type === "all" ? "detail" : type;

@@ -104,13 +104,17 @@ export default function Dashboard({ snap, warning, token }) {
 
   const th = (key, label, right) => (
     <th
-      className={right ? "r" : ""}
+      className={(right ? "r" : "") + (sort.key === key ? " sorted" : "")}
+      title={"Sort by " + label.toLowerCase()}
+      scope="col"
       aria-sort={sort.key === key ? (sort.dir === "asc" ? "ascending" : "descending") : undefined}
       onClick={() =>
         setSort((s) => ({ key, dir: s.key === key && s.dir === "desc" ? "asc" : "desc" }))}
     >
       {label}
-      {sort.key === key && <span className="arw">{sort.dir === "asc" ? "▲" : "▼"}</span>}
+      <span className="arw" aria-hidden="true">
+        {sort.key === key ? (sort.dir === "asc" ? "▲" : "▼") : "↕"}
+      </span>
     </th>
   );
 
@@ -165,7 +169,8 @@ export default function Dashboard({ snap, warning, token }) {
         )}
 
         <ExportBar token={token} missing={(snap.links && snap.links.crmid_missing) || 0}
-                   gaps={snap.cost_gaps || null} />
+                   gaps={snap.cost_gaps || null}
+                   view={{ year, q, noExecus }} />
 
         <div className="controls">
           <div className="seg" role="group" aria-label="Year">
@@ -509,14 +514,12 @@ export default function Dashboard({ snap, warning, token }) {
 }
 
 /**
- * Scarica tutti i fogli di dettaglio in uno zip, o li spedisce per email.
- * Un file per deal e uno per progetto: i due tagli non coincidono, perché deal
- * e progetto non sono sempre in corrispondenza uno a uno.
+ * La barra degli scarichi: la vista corrente, i fogli di dettaglio, e le due
+ * liste di cose da sistemare. Un file per deal e uno per progetto, perché i due
+ * tagli non coincidono: deal e progetto non stanno sempre uno a uno.
  */
-function ExportBar({ token, missing, gaps }) {
+function ExportBar({ token, missing, gaps, view }) {
   const [busy, setBusy] = useState(false);
-  const [ask, setAsk] = useState(false);
-  const [email, setEmail] = useState("");
   const [msg, setMsg] = useState(null);
   const url = (scope, extra) =>
     `/api/xlsx?type=${scope}` + (extra || "") + (token ? "&k=" + encodeURIComponent(token) : "");
@@ -535,30 +538,22 @@ function ExportBar({ token, missing, gaps }) {
     window.setTimeout(() => setMsg(null), 90000);
   };
 
-  const send = async () => {
-    setBusy(true); setMsg("Building and sending…");
-    try {
-      const r = await fetch(url("all") + "&email=" + encodeURIComponent(email));
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok || !j.ok) throw new Error(j.error || "the request did not come back");
-      setMsg("Sent to " + j.sent + " — " + j.files + " workbooks."); setAsk(false);
-    } catch (e) { setMsg("Not sent — " + e.message); }
-    setBusy(false);
-  };
-
   return (
     <div className="exportbar">
       <div className="xb-in">
         <span className="xb-t">
-          Detail workbooks — one per deal, one per project, one per client.
-          Deal and project do not always match one to one, so both cuts exist.
+          Download what you are looking at, or the detail behind it — one workbook per deal, one per
+          project, one per client. Deal and project do not always match one to one, so both cuts exist.
         </span>
+        <button className="xb" disabled={busy}
+                onClick={() => grab("dashboard", "&year=" + encodeURIComponent(view.year) +
+                  (view.q ? "&q=" + encodeURIComponent(view.q) : "") +
+                  (view.noExecus ? "&execus=0" : ""))}>
+          This view (.xlsx)
+        </button>
         <button className="xb" disabled={busy} onClick={() => grab("deals")}>Deals (.zip)</button>
         <button className="xb" disabled={busy} onClick={() => grab("projects")}>Projects (.zip)</button>
         <button className="xb" disabled={busy} onClick={() => grab("clients")}>Clients (.zip)</button>
-        <button className="xb ghost" disabled={busy} onClick={() => setAsk((v) => !v)}>
-          Email me everything
-        </button>
         {/* La lista dei progetti da sistemare è una cosa da fare, non un export:
             se non c'è niente da fare, il pulsante non deve nemmeno esistere. */}
         {missing > 0 ? (
@@ -577,13 +572,6 @@ function ExportBar({ token, missing, gaps }) {
           </button>
         ) : (
           <span className="xb-ok">Every logged hour has an hourly cost</span>
-        )}
-        {ask && (
-          <span className="xb-mail">
-            <input type="email" value={email} placeholder="name@kleecks.com"
-                   aria-label="Email address" onChange={(e) => setEmail(e.target.value)} />
-            <button className="xb" disabled={busy || !email} onClick={send}>Send</button>
-          </span>
         )}
       </div>
       {msg && <div className="xb-msg">{msg}</div>}
