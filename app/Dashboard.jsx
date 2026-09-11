@@ -616,8 +616,27 @@ function ExportBar({ token, missing, gaps, view, viewer, canUnlock }) {
     window.setTimeout(() => setMsg(null), 90000);
   };
 
+  const lock = async () => {
+    await fetch("/api/unlock", { method: "DELETE" }).catch(() => {});
+    window.location.reload();
+  };
+
   return (
     <div className="exportbar">
+      {canUnlock && (viewer ? (
+        <div className="lockbar">
+          <span>
+            <b>Summary view.</b> Margins, project costs and total hours are all here. What is not
+            here is who logged those hours and what each person costs.
+          </span>
+          <button className="xb" onClick={() => setAsk("")}>Unlock internal costs</button>
+        </div>
+      ) : (
+        <div className="lockbar open">
+          <span>Internal costs are unlocked on this browser for the next few hours.</span>
+          <button className="xb ghost" onClick={lock}>Lock again</button>
+        </div>
+      ))}
       <div className="xb-in">
         <span className="xb-t">
           {viewer
@@ -661,15 +680,6 @@ function ExportBar({ token, missing, gaps, view, viewer, canUnlock }) {
         )}
       </div>
       {msg && <div className="xb-msg">{msg}</div>}
-      {viewer && canUnlock && (
-        <div className="xb-msg">
-          Showing margins, project costs and total hours. Names and what each person costs are
-          behind the password.{" "}
-          <button className="xb-link" onClick={() => setAsk("")}>
-            Unlock internal costs
-          </button>
-        </div>
-      )}
       {ask !== null && <UnlockDialog reason={ask} onClose={() => setAsk(null)} />}
     </div>
   );
