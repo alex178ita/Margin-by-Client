@@ -351,3 +351,13 @@ button.xb.warn {
   border: 1px solid color-mix(in srgb, var(--ok) 35%, transparent);
   border-radius: 999px; padding: 5px 11px;
 }
+
+/* Su quali tariffe poggia ogni anno: sta in testa perché cambia i numeri. */
+.rateyears { margin: 8px 0 0; padding: 0; list-style: none;
+             display: flex; flex-wrap: wrap; gap: 6px; }
+.rateyears li {
+  font-size: 10.5px; padding: 2px 8px; border-radius: 999px;
+  border: 1px solid rgba(159,179,186,.4); color: #cfdde1; white-space: nowrap;
+}
+.rateyears li.fixed { color: #6fd3c6; border-color: rgba(111,211,198,.5); }
+.rateyears li.inherited { color: var(--gold); border-color: rgba(232,197,71,.45); }

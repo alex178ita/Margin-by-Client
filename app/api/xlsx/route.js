@@ -1,6 +1,6 @@
 import JSZip from "jszip";
 import { loadDataset, exportTargets } from "../../../lib/dataset";
-import { dealWorkbook, projectWorkbook, clientWorkbook, missingLinkWorkbook, fileName } from "../../../lib/xlsx";
+import { dealWorkbook, projectWorkbook, clientWorkbook, missingLinkWorkbook, missingRatesWorkbook, fileName } from "../../../lib/xlsx";
 import { sendZip, mailConfigured } from "../../../lib/mail";
 
 export const dynamic = "force-dynamic";
@@ -13,6 +13,7 @@ export const runtime = "nodejs";
  *   /api/xlsx?k=<token>&type=project&id=<projectId>
  *   /api/xlsx?k=<token>&type=client&id=<client name>
  *   /api/xlsx?k=<token>&type=missing            -> progetti senza CRMid
+ *   /api/xlsx?k=<token>&type=rates              -> ore a tariffa zero
  *   /api/xlsx?k=<token>&type=all               -> zip
  *   /api/xlsx?k=<token>&type=all&email=<addr>  -> zip via email
  */
@@ -30,13 +31,13 @@ export async function GET(request) {
   try {
     const ctx = await loadDataset();
 
-    if (type === "missing") {
-      const wb = await missingLinkWorkbook(ctx);
+    if (type === "missing" || type === "rates") {
+      const wb = type === "rates" ? await missingRatesWorkbook(ctx) : await missingLinkWorkbook(ctx);
       const buf = await wb.xlsx.writeBuffer();
       return new Response(buf, {
         headers: {
           "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-          "Content-Disposition": `attachment; filename="crmid_missing_${new Date().toISOString().slice(0, 10)}.xlsx"`,
+          "Content-Disposition": `attachment; filename="${type === "rates" ? "hourly_rates_missing" : "crmid_missing"}_${new Date().toISOString().slice(0, 10)}.xlsx"`,
           "Cache-Control": "no-store",
         },
       });

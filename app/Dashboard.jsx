@@ -123,6 +123,13 @@ export default function Dashboard({ snap, warning, token }) {
             <img className="logo" src={LOGO_DATA_URI} alt="Kleecks" />
             <h1>Margin by Clients <span className="qual">(before infrastructure costs)</span></h1>
             <div className="beta">v.0.1 — Beta for testing</div>
+            {snap.rate_years && (
+              <ul className="rateyears">
+                {Object.entries(snap.rate_years).map(([y, c]) => (
+                  <li key={y} className={c.status}>{c.label}</li>
+                ))}
+              </ul>
+            )}
           </div>
           <div className="meta">
             <div>Period<br /><b>{fmtDate(snap.period?.from)} – {fmtDate(snap.period?.to)}</b></div>
@@ -157,7 +164,8 @@ export default function Dashboard({ snap, warning, token }) {
           </div>
         )}
 
-        <ExportBar token={token} missing={(snap.links && snap.links.crmid_missing) || 0} />
+        <ExportBar token={token} missing={(snap.links && snap.links.crmid_missing) || 0}
+                   gaps={snap.cost_gaps || null} />
 
         <div className="controls">
           <div className="seg" role="group" aria-label="Year">
@@ -431,8 +439,14 @@ export default function Dashboard({ snap, warning, token }) {
                 across <b>{snap.revenue.reversed_invoices}</b> invoices, and has been taken out.{" "}
               </>
             )}
-            <b>Cost</b>: hours from <code>Time Logs (Zoho Projects)</code> multiplied by each
-            person&apos;s own <code>Cost Per Hour</code>, never a blended rate. Unlike the Project
+            <b>Cost</b>: hours from <code>Time Logs (Zoho Projects)</code> multiplied by that
+            person&apos;s real hourly cost in the year the hour was logged, taken from the Vivian
+            S.r.l. payroll — average monthly cost over the months worked, divided by{" "}
+            {snap.rate_years ? "21 working days and 8 hours" : "working days and hours"}. The rate
+            follows the year, not today: a project delivered in 2025 is costed at 2025 rates,
+            because pricing it at today&apos;s would invent a margin that never existed. Someone who
+            has left keeps the rate of their last year on the payroll. Zoho&apos;s own{" "}
+            <code>Cost Per Hour</code> is used only for people with no payroll record. Unlike the Project
             Portfolio report, projects prefixed <code>_</code> (management and CSM) are counted as
             client cost: that time is spent on the client. Internal projects (<code>---</code>,{" "}
             <code>::</code>) and pre-sales (<code>=</code>) stay out.
@@ -444,11 +458,13 @@ export default function Dashboard({ snap, warning, token }) {
             these figures as a contribution margin on delivery effort, not as net margin: the real
             profitability of every client sits below the number shown here, by an amount this page
             has no way to measure.
-            {snap.cost_gaps && snap.cost_gaps.projects > 0 && (
+            {snap.cost_gaps && snap.cost_gaps.hours > 0 && (
               <> Separately, <b>{Math.round(snap.cost_gaps.hours).toLocaleString("en-GB")} hours</b>{" "}
-                across {snap.cost_gaps.projects} client projects were logged by people with no{" "}
-                <code>Cost Per Hour</code> set in Zoho Projects, so they cost nothing here. Those
-                clients look better than they are until the rates are filled in.</>
+                across {snap.cost_gaps.projects} client projects were logged at a zero hourly cost,
+                so they cost nothing here — worth roughly{" "}
+                <b>{eur(snap.cost_gaps.estimated_cost)}</b> at the blended rate of{" "}
+                €{Math.round(snap.cost_gaps.blended_rate)}/h across everyone else. The{" "}
+                <b>Hourly Rates Missing</b> list at the top names every project and person concerned.</>
             )}
           </p>
           <p style={{ marginTop: 10 }}>
@@ -497,7 +513,7 @@ export default function Dashboard({ snap, warning, token }) {
  * Un file per deal e uno per progetto: i due tagli non coincidono, perché deal
  * e progetto non sono sempre in corrispondenza uno a uno.
  */
-function ExportBar({ token, missing }) {
+function ExportBar({ token, missing, gaps }) {
   const [busy, setBusy] = useState(false);
   const [ask, setAsk] = useState(false);
   const [email, setEmail] = useState("");
@@ -514,6 +530,9 @@ function ExportBar({ token, missing }) {
     a.href = url(scope);
     a.rel = "noopener";
     document.body.appendChild(a); a.click(); a.remove();
+    // Il browser non avvisa quando il download parte, quindi l'avviso si
+    // toglie da solo: lasciarlo lì per sempre fa pensare a un blocco.
+    window.setTimeout(() => setMsg(null), 90000);
   };
 
   const send = async () => {
@@ -548,6 +567,13 @@ function ExportBar({ token, missing }) {
           </button>
         ) : (
           <span className="xb-ok">All projects with CRMid, none missing</span>
+        )}
+        {gaps && gaps.hours > 0 ? (
+          <button className="xb warn" disabled={busy} onClick={() => grab("rates")}>
+            Hourly Rates Missing ({Math.round(gaps.hours).toLocaleString("en-GB")} h)
+          </button>
+        ) : (
+          <span className="xb-ok">Every logged hour has an hourly cost</span>
         )}
         {ask && (
           <span className="xb-mail">

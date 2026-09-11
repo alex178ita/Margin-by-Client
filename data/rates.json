@@ -1,0 +1,440 @@
+{
+ "note": "Tariffe orarie dai cedolini Vivian S.r.l. Costo mensile medio dei mesi in cui la persona compare, diviso i giorni lavorativi medi e le ore al giorno. Rigenerato quando arriva un file nuovo.",
+ "working_days_per_month": 21.0,
+ "hours_per_day": 8.0,
+ "first_year": "2025",
+ "years": {
+  "2025": {
+   "months": 11,
+   "status": "fixed",
+   "label": "2025 — hourly costs fixed"
+  },
+  "2026": {
+   "months": 7,
+   "status": "open",
+   "label": "2026 — hourly costs updated to Sep 2026"
+  },
+  "2027": {
+   "inherits": "2026",
+   "status": "inherited",
+   "label": "2027 — hourly costs updated to Sep 2026"
+  }
+ },
+ "people": {
+  "91305000001779007": {
+   "name": "Riccardo Di Cecco",
+   "payroll": "DI CECCO RICCARDO",
+   "dept": "HQ",
+   "status": "active",
+   "rates": {
+    "2025": 33.869,
+    "2026": 32.741
+   },
+   "months": {
+    "2025": 11,
+    "2026": 7
+   },
+   "flags": []
+  },
+  "91305000000021619": {
+   "name": "Alex Giorgi",
+   "payroll": "GIORGI ALESSANDRO",
+   "dept": "OPERATION",
+   "status": "active",
+   "rates": {
+    "2025": 62.433,
+    "2026": 57.15
+   },
+   "months": {
+    "2025": 11,
+    "2026": 7
+   },
+   "flags": []
+  },
+  "91305000000170019": {
+   "name": "Marco Baricevic",
+   "payroll": "BARICEVIC MARCO",
+   "dept": "IT",
+   "status": "active",
+   "rates": {
+    "2025": 67.883,
+    "2026": 62.606
+   },
+   "months": {
+    "2025": 11,
+    "2026": 7
+   },
+   "flags": []
+  },
+  "91305000000765161": {
+   "name": "Emanuela Farina",
+   "payroll": "FARINA EMANUELA",
+   "dept": "CUSTOMER OPS",
+   "status": "active",
+   "rates": {
+    "2025": 17.074,
+    "2026": 17.287
+   },
+   "months": {
+    "2025": 11,
+    "2026": 7
+   },
+   "flags": []
+  },
+  "91305000005717116": {
+   "name": "Andrea Guffi",
+   "payroll": "GUFFI ANDREA",
+   "dept": "IT",
+   "status": "active",
+   "rates": {
+    "2025": 25.639,
+    "2026": 28.123
+   },
+   "months": {
+    "2025": 11,
+    "2026": 7
+   },
+   "flags": []
+  },
+  "91305000005675744": {
+   "name": "Vanessa Noseda",
+   "payroll": "NOSEDA VANESSA",
+   "dept": "HQ",
+   "status": "active",
+   "rates": {
+    "2025": 22.906,
+    "2026": 25.337
+   },
+   "months": {
+    "2025": 11,
+    "2026": 7
+   },
+   "flags": []
+  },
+  "91305000004401183": {
+   "name": "Alessia Boeri",
+   "payroll": "BOERI ALESSIA",
+   "dept": "CUSTOMER OPS",
+   "status": "active",
+   "rates": {
+    "2025": 29.851,
+    "2026": 29.961
+   },
+   "months": {
+    "2025": 11,
+    "2026": 7
+   },
+   "flags": []
+  },
+  "91305000005383117": {
+   "name": "Elisa Passerini",
+   "payroll": "PASSERINI ELISA",
+   "dept": "HQ",
+   "status": "inactive",
+   "rates": {
+    "2025": 43.844,
+    "2026": 46.36
+   },
+   "months": {
+    "2025": 11,
+    "2026": 4
+   },
+   "flags": []
+  },
+  "91305000001910049": {
+   "name": "Alessandro Cacciatore",
+   "payroll": "CACCIATORE ALESSANDRO",
+   "dept": "CUSTOMER OPS",
+   "status": "active",
+   "rates": {
+    "2025": 28.423,
+    "2026": 30.899
+   },
+   "months": {
+    "2025": 11,
+    "2026": 7
+   },
+   "flags": []
+  },
+  "91305000002633586": {
+   "name": "Giuseppe Sensitivo",
+   "payroll": "SENSITIVO GIUSEPPE",
+   "dept": "HQ",
+   "status": "inactive",
+   "rates": {
+    "2025": 28.881,
+    "2026": 49.967
+   },
+   "months": {
+    "2025": 11,
+    "2026": 3
+   },
+   "flags": []
+  },
+  "91305000003508101": {
+   "name": "Gianluca Peretti",
+   "payroll": "PERETTI GIANLUCA",
+   "dept": "SALES",
+   "status": "active",
+   "rates": {
+    "2025": 46.038,
+    "2026": 50.037
+   },
+   "months": {
+    "2025": 11,
+    "2026": 7
+   },
+   "flags": []
+  },
+  "91305000005799191": {
+   "name": "Grazia Pazienza",
+   "payroll": "PAZIENZA GRAZIA",
+   "dept": null,
+   "status": "active",
+   "rates": {
+    "2025": 26.487,
+    "2026": 26.765
+   },
+   "months": {
+    "2025": 10,
+    "2026": 7
+   },
+   "flags": []
+  },
+  "91305000006134037": {
+   "name": "Matteo Magri",
+   "payroll": "MAGRI MATTEO",
+   "dept": null,
+   "status": "inactive",
+   "rates": {
+    "2025": 31.692,
+    "2026": 40.322
+   },
+   "months": {
+    "2025": 9,
+    "2026": 5
+   },
+   "flags": []
+  },
+  "91305000000675027": {
+   "name": "Marta Buffoni",
+   "payroll": "BUFFONI MARTA",
+   "dept": "HQ",
+   "status": "inactive",
+   "rates": {
+    "2025": 41.629,
+    "2026": 41.629
+   },
+   "months": {
+    "2025": 11,
+    "2026": 2
+   },
+   "flags": [
+    "2026: only 2 months and 80.33/h against 41.63/h the year before — looks like a leaving settlement, kept the earlier rate"
+   ]
+  },
+  "91305000002633598": {
+   "name": "Roberto Biancucci",
+   "payroll": "BIANCUCCI ROBERTO",
+   "dept": "IT",
+   "status": "active",
+   "rates": {
+    "2025": 39.338,
+    "2026": 39.976
+   },
+   "months": {
+    "2025": 11,
+    "2026": 7
+   },
+   "flags": []
+  },
+  "91305000000171025": {
+   "name": "Roberto Pellagatti",
+   "payroll": null,
+   "dept": null,
+   "status": "active",
+   "rates": {},
+   "months": {},
+   "flags": []
+  },
+  "91305000002663113": {
+   "name": "Elena Borgonovo",
+   "payroll": "BORGONOVO ELENA",
+   "dept": "HQ",
+   "status": "inactive",
+   "rates": {
+    "2025": 29.762,
+    "2026": 38.955
+   },
+   "months": {
+    "2025": 11,
+    "2026": 6
+   },
+   "flags": []
+  },
+  "91305000002065089": {
+   "name": "Aysenaz Darga",
+   "payroll": "DARGA AYSENAZ",
+   "dept": "OPERATION",
+   "status": "active",
+   "rates": {
+    "2025": 13.365,
+    "2026": 16.154
+   },
+   "months": {
+    "2025": 11,
+    "2026": 7
+   },
+   "flags": []
+  },
+  "91305000005218707": {
+   "name": "Alessandro Musciola",
+   "payroll": "MUSCIOLA' ALESSANDRO",
+   "dept": "HQ",
+   "status": "active",
+   "rates": {
+    "2025": 40.735,
+    "2026": 41.142
+   },
+   "months": {
+    "2025": 11,
+    "2026": 7
+   },
+   "flags": []
+  },
+  "91305000001253069": {
+   "name": "Francesco Fiore",
+   "payroll": "FIORE FRANCESCO",
+   "dept": "HQ",
+   "status": "inactive",
+   "rates": {
+    "2025": 36.207,
+    "2026": 42.666
+   },
+   "months": {
+    "2025": 11,
+    "2026": 7
+   },
+   "flags": []
+  },
+  "91305000005717087": {
+   "name": "Giada Birbitello",
+   "payroll": "BIRBITELLO GIADA",
+   "dept": "HQ",
+   "status": "active",
+   "rates": {
+    "2025": 52.658
+   },
+   "months": {
+    "2025": 11,
+    "2026": 7
+   },
+   "flags": [
+    "2026: negative or zero monthly cost, rate discarded"
+   ]
+  },
+  "91305000001253039": {
+   "name": "Luca Manigrasso",
+   "payroll": "MANIGRASSO LUCA ANTONIO",
+   "dept": "IT",
+   "status": "active",
+   "rates": {
+    "2025": 35.296,
+    "2026": 36.551
+   },
+   "months": {
+    "2025": 11,
+    "2026": 7
+   },
+   "flags": []
+  },
+  "91305000005675405": {
+   "name": "Massimo Montanaro",
+   "payroll": "MONTANARO MASSIMO",
+   "dept": "IT",
+   "status": "active",
+   "rates": {
+    "2025": 26.025,
+    "2026": 27.427
+   },
+   "months": {
+    "2025": 11,
+    "2026": 7
+   },
+   "flags": []
+  },
+  "91305000003959095": {
+   "name": "Emanuel Oliva",
+   "payroll": "OLIVA EMANUELE",
+   "dept": "IT",
+   "status": "active",
+   "rates": {
+    "2025": 52.446,
+    "2026": 53.469
+   },
+   "months": {
+    "2025": 11,
+    "2026": 7
+   },
+   "flags": []
+  },
+  "91305000005510209": {
+   "name": "Matteo Gobbo",
+   "payroll": "GOBBO MATTEO",
+   "dept": "IT",
+   "status": "active",
+   "rates": {
+    "2025": 28.702,
+    "2026": 28.759
+   },
+   "months": {
+    "2025": 11,
+    "2026": 7
+   },
+   "flags": []
+  },
+  "91305000006515145": {
+   "name": "Andrea Evangelista",
+   "payroll": "EVANGELISTA ANDREA",
+   "dept": null,
+   "status": "active",
+   "rates": {
+    "2025": 3.265,
+    "2026": 8.127
+   },
+   "months": {
+    "2025": 7,
+    "2026": 7
+   },
+   "flags": []
+  },
+  "91305000006072013": {
+   "name": "Daniele Fabrizio",
+   "payroll": "FABRIZIO DANIELE",
+   "dept": "SALES",
+   "status": "inactive",
+   "rates": {
+    "2025": 44.774
+   },
+   "months": {
+    "2025": 7
+   },
+   "flags": []
+  },
+  "91305000001347003": {
+   "name": "Diana Avelar",
+   "payroll": "GOMES LOPES DE AVELAR DIANA",
+   "dept": "HQ",
+   "status": "active",
+   "rates": {
+    "2025": 54.909,
+    "2026": 57.906
+   },
+   "months": {
+    "2025": 11,
+    "2026": 7
+   },
+   "flags": []
+  }
+ }
+}
