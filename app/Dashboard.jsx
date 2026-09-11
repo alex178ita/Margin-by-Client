@@ -157,7 +157,7 @@ export default function Dashboard({ snap, warning, token }) {
           </div>
         )}
 
-        <ExportBar token={token} />
+        <ExportBar token={token} missing={(snap.links && snap.links.crmid_missing) || 0} />
 
         <div className="controls">
           <div className="seg" role="group" aria-label="Year">
@@ -367,7 +367,8 @@ export default function Dashboard({ snap, warning, token }) {
                               {snap.projects
                                 .filter((p) => r.pj.includes(p.id))
                                 .map((p) => (
-                                  <li key={p.id} className={!p.crmid ? "rev" : ""}>
+                                  <li key={p.id}
+                                      className={p.link === "crmid" || p.link === "deal_name_field" ? "" : "rev"}>
                                     <span className="dl">
                                       <a href={PROJECT(p.id)} target="_blank" rel="noopener noreferrer"
                                          title={"Open " + p.n + " in Zoho Projects"}
@@ -375,6 +376,8 @@ export default function Dashboard({ snap, warning, token }) {
                                       <em className="tags">
                                         {p.link === "crmid" && p.deal &&
                                           <i className="tag ok">linked to {p.deal.name}</i>}
+                                        {p.link === "deal_name_field" && p.deal &&
+                                          <i className="tag ok">Deal Name field — {p.deal.name}</i>}
                                         {p.link === "name_guess" && p.deal &&
                                           <i className="tag warn">Missing CRMid — guessed {p.deal.name}</i>}
                                         {p.link === "name_ambiguous" &&
@@ -494,35 +497,31 @@ export default function Dashboard({ snap, warning, token }) {
  * Un file per deal e uno per progetto: i due tagli non coincidono, perché deal
  * e progetto non sono sempre in corrispondenza uno a uno.
  */
-function ExportBar({ token }) {
+function ExportBar({ token, missing }) {
   const [busy, setBusy] = useState(false);
   const [ask, setAsk] = useState(false);
   const [email, setEmail] = useState("");
   const [msg, setMsg] = useState(null);
-  const base = "/api/xlsx?type=all" + (token ? "&k=" + encodeURIComponent(token) : "");
+  const url = (scope) =>
+    `/api/xlsx?type=${scope}` + (token ? "&k=" + encodeURIComponent(token) : "");
 
-  const download = async () => {
-    setBusy(true); setMsg("Building the workbooks — this takes a minute…");
-    try {
-      const r = await fetch(base);
-      if (!r.ok) throw new Error(((await r.json().catch(() => ({}))).error) || "failed");
-      const blob = await r.blob();
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = "margin_detail_" + new Date().toISOString().slice(0, 10) + ".zip";
-      document.body.appendChild(a); a.click(); a.remove();
-      URL.revokeObjectURL(a.href);
-      setMsg(null);
-    } catch (e) { setMsg("Could not build the zip — " + e.message); }
-    setBusy(false);
+  // Il download va lasciato al browser: tirare giù lo zip con fetch e tenerlo
+  // in memoria come blob è proprio ciò che falliva, e l'errore che arrivava
+  // ("Load failed") non diceva niente. Un link normale lo scarica in streaming.
+  const grab = (scope) => {
+    setMsg("Building the workbooks — the download starts on its own, it takes a minute.");
+    const a = document.createElement("a");
+    a.href = url(scope);
+    a.rel = "noopener";
+    document.body.appendChild(a); a.click(); a.remove();
   };
 
   const send = async () => {
     setBusy(true); setMsg("Building and sending…");
     try {
-      const r = await fetch(base + "&email=" + encodeURIComponent(email));
+      const r = await fetch(url("all") + "&email=" + encodeURIComponent(email));
       const j = await r.json().catch(() => ({}));
-      if (!r.ok || !j.ok) throw new Error(j.error || "failed");
+      if (!r.ok || !j.ok) throw new Error(j.error || "the request did not come back");
       setMsg("Sent to " + j.sent + " — " + j.files + " workbooks."); setAsk(false);
     } catch (e) { setMsg("Not sent — " + e.message); }
     setBusy(false);
@@ -531,11 +530,25 @@ function ExportBar({ token }) {
   return (
     <div className="exportbar">
       <div className="xb-in">
-        <span className="xb-t">Detail workbooks — one per deal, one per project, one per client</span>
-        <button className="xb" disabled={busy} onClick={download}>Download all (.zip)</button>
+        <span className="xb-t">
+          Detail workbooks — one per deal, one per project, one per client.
+          Deal and project do not always match one to one, so both cuts exist.
+        </span>
+        <button className="xb" disabled={busy} onClick={() => grab("deals")}>Deals (.zip)</button>
+        <button className="xb" disabled={busy} onClick={() => grab("projects")}>Projects (.zip)</button>
+        <button className="xb" disabled={busy} onClick={() => grab("clients")}>Clients (.zip)</button>
         <button className="xb ghost" disabled={busy} onClick={() => setAsk((v) => !v)}>
-          Email them instead
+          Email me everything
         </button>
+        {/* La lista dei progetti da sistemare è una cosa da fare, non un export:
+            se non c'è niente da fare, il pulsante non deve nemmeno esistere. */}
+        {missing > 0 ? (
+          <button className="xb warn" disabled={busy} onClick={() => grab("missing")}>
+            CRMid Missing List ({missing})
+          </button>
+        ) : (
+          <span className="xb-ok">All projects with CRMid, none missing</span>
+        )}
         {ask && (
           <span className="xb-mail">
             <input type="email" value={email} placeholder="name@kleecks.com"

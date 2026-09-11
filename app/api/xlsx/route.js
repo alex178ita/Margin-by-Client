@@ -1,6 +1,6 @@
 import JSZip from "jszip";
 import { loadDataset, exportTargets } from "../../../lib/dataset";
-import { dealWorkbook, projectWorkbook, clientWorkbook, fileName } from "../../../lib/xlsx";
+import { dealWorkbook, projectWorkbook, clientWorkbook, missingLinkWorkbook, fileName } from "../../../lib/xlsx";
 import { sendZip, mailConfigured } from "../../../lib/mail";
 
 export const dynamic = "force-dynamic";
@@ -12,6 +12,7 @@ export const runtime = "nodejs";
  *   /api/xlsx?k=<token>&type=deal&id=<dealId>
  *   /api/xlsx?k=<token>&type=project&id=<projectId>
  *   /api/xlsx?k=<token>&type=client&id=<client name>
+ *   /api/xlsx?k=<token>&type=missing            -> progetti senza CRMid
  *   /api/xlsx?k=<token>&type=all               -> zip
  *   /api/xlsx?k=<token>&type=all&email=<addr>  -> zip via email
  */
@@ -29,6 +30,18 @@ export async function GET(request) {
   try {
     const ctx = await loadDataset();
 
+    if (type === "missing") {
+      const wb = await missingLinkWorkbook(ctx);
+      const buf = await wb.xlsx.writeBuffer();
+      return new Response(buf, {
+        headers: {
+          "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          "Content-Disposition": `attachment; filename="crmid_missing_${new Date().toISOString().slice(0, 10)}.xlsx"`,
+          "Cache-Control": "no-store",
+        },
+      });
+    }
+
     if (type === "deal" || type === "project" || type === "client") {
       const { wb, name } = await one(ctx, type, id);
       const buf = await wb.xlsx.writeBuffer();
@@ -41,8 +54,18 @@ export async function GET(request) {
       });
     }
 
-    if (type === "all") {
-      const { zip, count } = await everything(ctx);
+    if (type === "all" || type === "deals" || type === "projects" || type === "clients") {
+      const { zip, count } = await everything(ctx, type);
+      // Una serverless function di Vercel non può restituire più di 4,5 MB:
+      // oltre, la risposta viene troncata e il browser riporta solo
+      // "Load failed", senza che nei log compaia nulla. Meglio dirlo.
+      if (!email && zip.length > 4_000_000) {
+        return Response.json({
+          ok: false,
+          error: `That selection is ${(zip.length / 1048576).toFixed(1)} MB and a download can carry at ` +
+                 "most 4.5 MB. Download the three sets separately, or have them emailed instead.",
+        }, { status: 413 });
+      }
       if (email) {
         if (!mailConfigured()) {
           return Response.json({
@@ -55,16 +78,21 @@ export async function GET(request) {
         return Response.json({ ok: true, sent: email, files: count });
       }
       const stamp = new Date().toISOString().slice(0, 10);
+      const label = type === "all" ? "detail" : type;
       return new Response(zip, {
         headers: {
           "Content-Type": "application/zip",
-          "Content-Disposition": `attachment; filename="margin_detail_${stamp}.zip"`,
+          "Content-Length": String(zip.length),
+          "Content-Disposition": `attachment; filename="margin_${label}_${stamp}.zip"`,
           "Cache-Control": "no-store",
         },
       });
     }
 
-    return Response.json({ ok: false, error: "unknown type: use deal, project, client or all" }, { status: 400 });
+    return Response.json({
+      ok: false,
+      error: "unknown type: use deal, project, client, deals, projects, clients or all",
+    }, { status: 400 });
   } catch (e) {
     return Response.json({ ok: false, error: e.message }, { status: 500 });
   }
@@ -89,7 +117,8 @@ async function one(ctx, type, id) {
  * Un file per deal e uno per progetto, come chiesto: il taglio per deal e il
  * taglio per progetto non coincidono, quindi si producono entrambi.
  */
-async function everything(ctx) {
+async function everything(ctx, scope) {
+  const want = (k) => scope === "all" || scope === k;
   const { dealIds, projectIds } = exportTargets(ctx);
   const zip = new JSZip();
   const deals = zip.folder("deals");
@@ -98,7 +127,7 @@ async function everything(ctx) {
   let count = 0;
   const failed = [];
 
-  for (const d of dealIds) {
+  if (want("deals")) for (const d of dealIds) {
     try {
       const wb = await dealWorkbook(ctx, d);
       const deal = ctx.dealById.get(d);
@@ -106,7 +135,7 @@ async function everything(ctx) {
       count += 1;
     } catch (e) { failed.push("deal " + d + ": " + e.message); }
   }
-  for (const p of projectIds) {
+  if (want("projects")) for (const p of projectIds) {
     try {
       const wb = await projectWorkbook(ctx, p);
       const pr = ctx.projects.find((x) => x.id === p);
@@ -114,7 +143,7 @@ async function everything(ctx) {
       count += 1;
     } catch (e) { failed.push("project " + p + ": " + e.message); }
   }
-  for (const c of ctx.clients) {
+  if (want("clients")) for (const c of ctx.clients) {
     try {
       const wb = await clientWorkbook(ctx, c.c);
       clients.file(fileName("client", c.c), await wb.xlsx.writeBuffer());
