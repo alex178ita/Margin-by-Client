@@ -21,7 +21,7 @@ export async function GET(request) {
 
   const t0 = Date.now();
   try {
-    const snap = await buildSnapshot();
+    const snap = await buildSnapshot({ force: true });
     revalidatePath("/");
     return Response.json({
       ok: true,
