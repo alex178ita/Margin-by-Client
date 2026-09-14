@@ -175,10 +175,10 @@ tbody tr { cursor: pointer; }
 tbody tr:hover td { background: var(--surface-2); }
 tbody tr.open td { background: var(--surface-2); }
 
-.cli { font-weight: 600; display: flex; align-items: baseline; gap: 7px; min-width: 0; }
+.cli { font-weight: 600; display: flex; align-items: center; gap: 7px; min-width: 0; }
 /* La freccia dice che la riga si apre. Prima non lo diceva niente e il
    dettaglio lo trovava solo chi provava a cliccare per caso. */
-.exp { flex: none; font-size: 9px; line-height: 1; color: var(--ink-3);
+.exp { flex: none; font-size: 13px; line-height: 1; color: var(--ink-3);
        transition: transform 0.14s ease, color 0.14s ease; transform-origin: 50% 50%; }
 tbody tr:hover .exp { color: var(--teal); }
 tbody tr.open .exp { transform: rotate(90deg); color: var(--teal); }
