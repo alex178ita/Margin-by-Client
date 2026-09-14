@@ -175,7 +175,14 @@ tbody tr { cursor: pointer; }
 tbody tr:hover td { background: var(--surface-2); }
 tbody tr.open td { background: var(--surface-2); }
 
-.cli { font-weight: 600; }
+.cli { font-weight: 600; display: flex; align-items: baseline; gap: 7px; min-width: 0; }
+/* La freccia dice che la riga si apre. Prima non lo diceva niente e il
+   dettaglio lo trovava solo chi provava a cliccare per caso. */
+.exp { flex: none; font-size: 9px; line-height: 1; color: var(--ink-3);
+       transition: transform 0.14s ease, color 0.14s ease; transform-origin: 50% 50%; }
+tbody tr:hover .exp { color: var(--teal); }
+tbody tr.open .exp { transform: rotate(90deg); color: var(--teal); }
+tbody tr:focus-visible { outline: 2px solid var(--teal); outline-offset: -2px; }
 .via { font-size: 11px; color: var(--ink-3); }
 .pill {
   display: inline-block; padding: 1px 6px; border-radius: 2px; font-size: 10.5px;
@@ -447,3 +454,55 @@ td.dim.a { color: #8a6b00; }
 td.dim.b { color: #a33a2a; }
 a.pill { text-decoration: none; }
 a.pill:hover { border-color: var(--teal); color: var(--teal); }
+
+/* ------------------------------------------------------------ barra menù */
+/* Tre tendine al posto di otto pulsanti: la fila cresceva a ogni aggiunta
+   finché non si leggeva più. */
+.mb { display: flex; align-items: center; gap: 4px; flex-wrap: wrap;
+      padding: 6px 4px; border-bottom: 1px solid var(--line); }
+.mb-item { position: relative; }
+.mb-top { display: inline-flex; align-items: center; gap: 7px; background: none;
+          border: 1px solid transparent; border-radius: 7px; cursor: pointer;
+          padding: 7px 11px; font: inherit; font-size: 13px; font-weight: 600;
+          color: var(--ink-2); }
+.mb-top:hover { background: var(--surface); color: var(--ink); }
+.mb-item.on .mb-top { background: var(--surface); border-color: var(--line); color: var(--ink); }
+.mb-caret { font-size: 9px; color: var(--ink-3); }
+.mb-badge { font-style: normal; font-size: 10.5px; font-weight: 700; line-height: 1;
+            padding: 3px 6px; border-radius: 20px; background: var(--warn); color: #fff; }
+.mb-spacer { flex: 1; }
+.mb-stamp { font-size: 11.5px; color: var(--ink-3); padding-right: 6px; }
+
+.mb-drop { position: absolute; z-index: 40; top: calc(100% + 4px); left: 0; min-width: 310px;
+           background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+           box-shadow: 0 12px 30px rgba(13, 27, 42, 0.16); padding: 6px; }
+.mb-opt { display: block; width: 100%; text-align: left; background: none; border: 0;
+          border-radius: 7px; cursor: pointer; padding: 8px 10px; font: inherit; }
+.mb-opt:hover { background: var(--paper); }
+.mb-opt .mb-l { display: block; font-size: 13px; font-weight: 600; color: var(--ink); }
+.mb-opt .mb-h { display: block; font-size: 11.5px; color: var(--ink-3); margin-top: 2px;
+                line-height: 1.4; }
+.mb-opt.warn .mb-l { color: var(--warn); }
+.mb-opt.locked .mb-l { color: var(--ink-3); }
+.mb-opt .lk { font-style: normal; margin-left: 6px; font-size: 11px; }
+.mb-sep { font-size: 10px; letter-spacing: 0.09em; text-transform: uppercase;
+          color: var(--ink-3); padding: 9px 10px 4px; border-top: 1px solid var(--line-soft);
+          margin-top: 4px; }
+.mb-note { font-size: 11.5px; color: var(--ink-3); padding: 8px 10px; line-height: 1.5; }
+.mb-note.ok { color: var(--ok); }
+
+/* Le colonne che guardano il CRM invece delle fatture: stessa tabella, tinta
+   diversa, perché rispondono a una domanda diversa. */
+th.crm, td.crm { background: color-mix(in srgb, #5b73a8 6%, transparent); }
+td.crm { color: var(--ink-2); }
+.det li.crm span:first-child { color: #5b73a8; }
+.part { font-style: normal; color: var(--warn); font-weight: 700; margin-left: 2px; }
+
+/* Pannello delle regole */
+.modal.help { max-width: 620px; }
+.hd-body { max-height: 62vh; overflow-y: auto; font-size: 13.5px; line-height: 1.62;
+           color: var(--ink-2); }
+.hd-body p { margin: 0 0 11px; }
+.hd-body b { color: var(--ink); }
+.hd-body code { font-size: 12px; background: var(--paper); padding: 1px 5px; border-radius: 4px; }
+.hd-note { border-top: 1px solid var(--line-soft); padding-top: 10px; color: var(--ink-3); }

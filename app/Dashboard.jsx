@@ -17,6 +17,205 @@ const pct = (n) => (n == null ? "—" : (n * 100).toFixed(1) + "%");
 // Soglie coerenti con il Project Portfolio report: >=30% verde, 0-30% ambra, <0 rosso.
 const band = (m) => (m == null ? "" : m >= 0.3 ? "g" : m >= 0 ? "a" : "b");
 
+/**
+ * Le regole di lettura, in un posto solo.
+ *
+ * Stavano tutte in fondo alla pagina, in sei paragrafi che nessuno finiva di
+ * leggere e che comunque non si trovavano quando servivano — cioè guardando un
+ * numero che non torna. Qui sono voci di menù: si apre quella che riguarda il
+ * numero che si ha davanti.
+ */
+const HELP = [
+  { k: "margins", t: "The three margins", s: "year, all time, and against the contract" },
+  { k: "year", t: "Which year a revenue belongs to", s: "licences spread over the period they cover" },
+  { k: "cost", t: "How an hour is costed", s: "payroll by month, leavers, placements" },
+  { k: "link", t: "Deals and projects", s: "CRMid, guesses, deals served by several projects" },
+  { k: "revenue", t: "What counts as revenue", s: "net of VAT, net of credit notes" },
+  { k: "limits", t: "What this margin is not", s: "no servers, no infrastructure, no licences bought" },
+];
+
+function HelpDialog({ topic, snap, onClose }) {
+  useEffect(() => {
+    const esc = (e) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", esc);
+    return () => document.removeEventListener("keydown", esc);
+  }, [onClose]);
+
+  const body = {
+    margins: (
+      <>
+        <p>
+          <b>Margin — selected year.</b> The revenue earned in that year against the hours logged in
+          that year, including hours on projects that started earlier. A project running from 2025
+          into 2026 appears in both, each time for the part that falls in that year, and never twice.
+        </p>
+        <p>
+          <b>Margin — all time.</b> The whole relationship, every year together, from the first
+          invoice counted here to the last. Read next to the year: a weak year on a client with a
+          strong history is a different thing from a client that has never paid for itself.
+        </p>
+        <p>
+          <b>Margin on the contract.</b> The same cost, but measured against the <b>Amount</b> of the
+          deals in Zoho CRM rather than against what has been invoiced. It answers a different
+          question — <i>does what we sold cover what it costs to deliver?</i> — and it moves before
+          the invoices do, because a deal is worth its full amount from the day it is won. Where a
+          deal was won before {snap.min_year || "2025"} its earlier delivery cost is outside this
+          window, so that margin reads better than it was; those clients are marked.
+        </p>
+        <p className="hd-note">
+          All three are before server and infrastructure costs. None of them is net margin.
+        </p>
+      </>
+    ),
+    year: (
+      <>
+        <p>
+          Many licences are invoiced once for a period straddling two calendar years. Booking the
+          whole amount to the year of issue would measure the invoicing rhythm rather than the
+          business, so selecting a year spreads each invoice pro rata, day by day, across the{" "}
+          <code>Licence Start Date</code> – <code>Licence End Date</code> window of the CRM deal
+          recorded on it. Cost is the time logged in that same year, so both sides sit on the same
+          basis.
+        </p>
+        <p>
+          Invoices with no usable licence period — one-off consultancy, extra work billed against a
+          licence deal well outside its window — stay on the invoice date.
+        </p>
+        {snap.accrual && snap.accrual.coverage != null && (
+          <p>
+            Licence periods were found for <b>{pct(snap.accrual.coverage)}</b> of invoices
+            ({snap.accrual.matched} of {snap.accrual.considered}).
+          </p>
+        )}
+        <p className="hd-note">
+          <b>All</b> stays on the invoice date, so it reconciles to Zoho Books. Per-year figures will
+          not add up to it exactly: the difference is licence value earned outside the window.
+        </p>
+      </>
+    ),
+    cost: (
+      <>
+        <p>
+          Hours come from <code>Time Logs</code> in Zoho Projects. Each hour is priced at what that
+          person cost the company <b>in the month it was logged</b>, from the Vivian S.r.l. payroll:
+          that month&apos;s total cost divided by 21 working days and 8 hours.
+        </p>
+        <p>
+          By the month, not by the year, because a yearly average carries the old figure for months
+          after it stopped being true — someone taken on as an employee part-way through a placement
+          would keep costing the placement allowance until December.
+        </p>
+        <p>
+          Two months are the exception. The month someone <b>leaves</b> carries their settlement, and
+          the month after often carries a small residual line; neither describes the cost of the work
+          done in it, and severance is already accrued month by month in the payroll, so both use
+          that person&apos;s usual monthly cost instead.
+        </p>
+        <p>
+          The rate follows the past, not today: an hour logged in March 2025 is costed at March 2025.
+          Pricing it at today&apos;s rate would invent a margin that never existed. Zoho&apos;s own{" "}
+          <code>Cost Per Hour</code> is used only for people with no payroll record — and Zoho stamps
+          its rate on each log when it is saved, which is why changing a rate there never re-prices
+          the past.
+        </p>
+        <p className="hd-note">
+          Projects prefixed <code>_</code> (management and CSM) count as client cost: that time is
+          spent on the client. Internal projects (<code>---</code>, <code>::</code>) and pre-sales
+          (<code>=</code>) stay out.
+        </p>
+      </>
+    ),
+    link: (
+      <>
+        <p>
+          A project earns revenue only through the deal it delivers, and the link is the{" "}
+          <code>CRMid</code> field on the project in Zoho Projects. Where it is empty, a deal with an
+          identical name is offered as a <b>guess</b> and marked as such everywhere it appears.
+        </p>
+        <p>
+          A project with no link is still costed, but earns nothing of its own — its workbook is a
+          cost sheet. Where <b>several projects deliver one deal</b>, the revenue belongs to all of
+          them together, so no margin is attributed to any single one.
+        </p>
+        <p>
+          This is also why the detail workbooks come in two cuts: one per deal, covering the whole
+          deal, and one per project, covering that project alone. Deal and project are not always one
+          to one.
+        </p>
+        {snap.links && snap.links.crmid_missing > 0 && (
+          <p className="hd-note">
+            <b>{snap.links.crmid_missing}</b> client projects have no CRMid right now, of which{" "}
+            {snap.links.crmid_missing_guessed} matched a deal by name. The list is under{" "}
+            <b>Data to fix</b>.
+          </p>
+        )}
+      </>
+    ),
+    revenue: (
+      <>
+        <p>
+          Revenue is invoices issued in Zoho Books (Vivian Srl), drafts excluded, taken at the{" "}
+          <b>sub-total</b> so it is net of VAT and comparable with the CRM deal amount, and{" "}
+          <b>net of any credit note</b> raised against the invoice.
+        </p>
+        <p>
+          That last point matters more than it sounds: a reversed invoice still reads Closed and paid
+          in Books, so checking the status never catches it — only the credit note does.
+          {snap.revenue && snap.revenue.credited > 0 && (
+            <> In this period <b>{eur(snap.revenue.credited)}</b> was reversed across{" "}
+              <b>{snap.revenue.reversed_invoices}</b> invoices and has been taken out.</>
+          )}
+        </p>
+        <p>
+          Revenue reaches the end client through the CRM deal recorded on each invoice, which is why
+          Prada, MSC and ITA Airways appear as clients in their own right rather than as lines under
+          Jakala.
+        </p>
+        <p className="hd-note">
+          <b>Lifetime value</b> is a different measure again: the full Amount of every deal of that
+          client in a Won stage in CRM, all time. It counts deals won and never invoiced and leaves
+          out invoicing of deals won long ago, so it will never reconcile with revenue.
+        </p>
+      </>
+    ),
+    limits: (
+      <>
+        <p>
+          The only cost subtracted here is people&apos;s time. Servers, infrastructure, third-party
+          licences and the rest of the cost of running the platform are not recorded anywhere in
+          Zoho, so they cannot enter this calculation.
+        </p>
+        <p>
+          Read these figures as a contribution margin on delivery effort, not as net margin: the real
+          profitability of every client sits below the number shown here, by an amount this page has
+          no way to measure.
+        </p>
+        {snap.cost_gaps && snap.cost_gaps.hours > 0 && (
+          <p className="hd-note">
+            Separately, <b>{Math.round(snap.cost_gaps.hours).toLocaleString("en-GB")} hours</b> across{" "}
+            {snap.cost_gaps.projects} client projects carry no hourly cost, so they cost nothing here
+            and every margin they touch is flattered by that much.
+          </p>
+        )}
+      </>
+    ),
+  }[topic];
+
+  const meta = HELP.find((h) => h.k === topic) || {};
+  return (
+    <div className="modal-wrap" role="dialog" aria-modal="true" aria-label={meta.t}
+         onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="modal help">
+        <h3>{meta.t}</h3>
+        <div className="hd-body">{body}</div>
+        <div className="modal-row">
+          <button className="xb" onClick={onClose}>Close</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const SEGMENT_COLORS = ["#0f7173", "#14a19a", "#4bbfae", "#8ad3c4", "#e8c547"];
 
 export default function Dashboard({ snap, warning, token, role, canUnlock }) {
@@ -75,6 +274,10 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
           live: rev !== 0 || (cost || 0) !== 0,
           marginPct: cost == null || rev === 0 ? null : margin / rev,
           marginPctAll: c.cost == null || !c.rt ? null : marginAll / c.rt,
+          // Contro il valore a contratto invece che contro il fatturato: dice
+          // se il venduto regge i costi, e si muove prima delle fatture.
+          marginAmt: c.cost == null || !c.amt ? null : c.amt - c.cost,
+          marginPctAmt: c.cost == null || !c.amt ? null : (c.amt - c.cost) / c.amt,
         };
       })
       .filter((c) => c.live)
@@ -94,6 +297,8 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
       : key === "pctall" ? (r.marginPctAll == null ? -Infinity : r.marginPctAll)
       : key === "hrs" ? (r.hours == null ? -Infinity : r.hours)
       : key === "ltv" ? (r.ltv == null ? -Infinity : r.ltv)
+      : key === "amt" ? (r.amt == null ? -Infinity : r.amt)
+      : key === "pctamt" ? (r.marginPctAmt == null ? -Infinity : r.marginPctAmt)
       : key === "inv" ? r.n
       : key === "open" ? r.ob
       : r.pj.length;
@@ -223,10 +428,10 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
         )}
 
 
-        <ExportBar token={token} viewer={viewer} canUnlock={canUnlock}
-                   missing={(snap.links && snap.links.crmid_missing) || 0}
-                   gaps={snap.cost_gaps || null}
-                   view={{ year, q, noExecus }} />
+        <MenuBar token={token} viewer={viewer} canUnlock={canUnlock} snap={snap}
+                 missing={(snap.links && snap.links.crmid_missing) || 0}
+                 gaps={snap.cost_gaps || null}
+                 view={{ year, q, noExecus }} />
 
         <div className="controls">
           <div className="seg" role="group" aria-label="Year">
@@ -349,6 +554,8 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
 {/* Con "All" selezionato i due margini coincidono: la seconda
                     colonna compare solo quando c'è un anno da affiancare. */}
                 {year !== "all" && th("pctall", "Margin % all time", true)}
+                {th("amt", "Contract value", true)}
+                {th("pctamt", "Margin % on contract", true)}
                 {th("ltv", "Lifetime value", true)}
                 {th("inv", "Inv.", true)}
                 {th("open", "Outstanding", true)}
@@ -361,9 +568,26 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                 const via = r.p.filter((x) => x !== r.c);
                 return [
                   <tr key={r.c} className={isOpen ? "open" : ""}
+                      aria-expanded={isOpen}
+                      tabIndex={0}
+                      title={isOpen ? "Close the detail" : "Open the detail for " + r.c}
+                      onKeyDown={(e) => {
+                        // Una riga che si apre col clic deve aprirsi anche da
+                        // tastiera, altrimenti il dettaglio è raggiungibile solo
+                        // col mouse.
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          setOpen(isOpen ? null : r.c);
+                        }
+                      }}
                       onClick={() => setOpen(isOpen ? null : r.c)}>
                     <td>
                       <div className="cli">
+                        {/* Che la riga si apra non si capiva: il clic funzionava
+                            ma niente lo diceva. La freccia lo annuncia e ruota
+                            quando è aperta, e resta fuori dal link del nome —
+                            che continua a scaricare l'Excel del cliente. */}
+                        <span className="exp" aria-hidden="true">▸</span>
                         <a href={xlsx("client", r.c)} className="clidl"
                            title="Download every costed project behind this client's margin"
                            onClick={(e) => e.stopPropagation()}>{r.c}</a>
@@ -399,6 +623,23 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                         {r.marginPctAll == null ? <span className="na">—</span> : pct(r.marginPctAll)}
                       </td>
                     )}
+                    {/* Il venduto secondo il CRM, e il margine misurato su
+                        quello. Colonne in tinta diversa perché rispondono a una
+                        domanda diversa: non "quanto abbiamo guadagnato" ma
+                        "quello che abbiamo venduto regge i costi". */}
+                    <td className="r num crm">
+                      {r.amt == null ? <span className="na">—</span> : eurK(r.amt)}
+                    </td>
+                    <td className={"r num crm " + band(r.marginPctAmt)}
+                        title={r.amt == null ? "no CRM amount on this client's deals"
+                          : r.amtn + " deal" + (r.amtn === 1 ? "" : "s") + " worth " + eur(r.amt) +
+                            " against " + eur(r.costAll || 0) + " of cost" +
+                            (r.amt_early ? " — " + r.amt_early + " of them closed before " +
+                              (snap.min_year || "2025") + ", so part of their cost is outside this window" : "")}>
+                      {r.marginPctAmt == null ? <span className="na">—</span> : (
+                        <>{pct(r.marginPctAmt)}{r.amt_early > 0 && <i className="part" title="part of the cost is outside the window">*</i>}</>
+                      )}
+                    </td>
                     {/* Quanto pesa il cliente per l'azienda: tutti i suoi deal
                         vinti in CRM, non il fatturato. Sono misure diverse e non
                         torneranno mai uguali — il titolo lo dice. */}
@@ -413,7 +654,7 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                   </tr>,
                   isOpen && (
                     <tr key={r.c + "-d"} className="detail">
-                      <td colSpan={year === "all" ? 9 : 10}>
+                      <td colSpan={year === "all" ? 11 : 12}>
                         <div className="det">
                           <div>
                             <h4>Client</h4>
@@ -425,6 +666,17 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                               <li>
                                 <span>Share of the {year === "all" ? "period" : year}</span>
                                 <b className="num">{pct(wTot ? r.rev / wTot : 0)}</b>
+                              </li>
+                              <li className="crm">
+                                <span>Contract value (CRM amount)</span>
+                                <b className="num">{r.amt == null ? "—" : eurK(r.amt)}</b>
+                              </li>
+                              <li className="crm">
+                                <span>Margin on contract</span>
+                                <b className={"num " + band(r.marginPctAmt)}>
+                                  {r.marginAmt == null ? "—" : eurK(r.marginAmt)}
+                                  {r.marginPctAmt == null ? "" : " · " + pct(r.marginPctAmt)}
+                                </b>
                               </li>
                               <li title={r.ltvn + " Won deal" + (r.ltvn === 1 ? "" : "s") +
                                          " in CRM, all time — a different measure from invoiced revenue"}>
@@ -642,103 +894,33 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
 
         <footer className="note">
           <p>
-            <b>Revenue</b>: invoices issued in Zoho Books (Vivian Srl), drafts excluded, taken at the{" "}
-            <b>sub-total</b> so it is net of VAT and comparable with the CRM deal amount, and{" "}
-            <b>net of any credit note</b> raised against the invoice. A reversed invoice still reads
-            Closed and paid in Books, so status alone never catches it; only the credit note does.
-            Revenue is attributed to the end client through the CRM deal recorded on each invoice —
-            which is why Prada, MSC and ITA Airways appear as clients in their own right rather than
-            as lines under Jakala.{" "}
+            <b>Revenue</b> is invoiced in Zoho Books, net of VAT and of credit notes.{" "}
+            <b>Cost</b> is each person&apos;s real hourly cost from the payroll, in the month the
+            hour was logged. <b>Margin</b> is one less the other, before server and infrastructure
+            costs — which Zoho does not record, so the real profitability of every client sits below
+            what is shown here. The rules behind each figure, and the cases where they bend, are
+            under <b>How to read this</b> at the top.
             {snap.revenue && snap.revenue.basis === "gross" && (
               <b className="err">
                 {" "}Analytics could not be reached, so revenue on this run is the invoice total
                 including VAT and does not exclude credit notes.{" "}
               </b>
             )}
-            {snap.revenue && snap.revenue.credited > 0 && (
-              <>
-                {" "}In this period <b>{eur(snap.revenue.credited)}</b> was reversed by credit notes
-                across <b>{snap.revenue.reversed_invoices}</b> invoices, and has been taken out.{" "}
-              </>
-            )}
-            <b>Cost</b>: hours from <code>Time Logs (Zoho Projects)</code> multiplied by that
-            person&apos;s real hourly cost in the year the hour was logged, taken from the Vivian
-            S.r.l. payroll — average monthly cost over the months worked, divided by{" "}
-            {snap.rate_years ? "21 working days and 8 hours" : "working days and hours"}. The rate
-            follows the year, not today: a project delivered in 2025 is costed at 2025 rates,
-            because pricing it at today&apos;s would invent a margin that never existed. Someone who
-            has left keeps the rate of their last year on the payroll. Zoho&apos;s own{" "}
-            <code>Cost Per Hour</code> is used only for people with no payroll record. Unlike the Project
-            Portfolio report, projects prefixed <code>_</code> (management and CSM) are counted as
-            client cost: that time is spent on the client. Internal projects (<code>---</code>,{" "}
-            <code>::</code>) and pre-sales (<code>=</code>) stay out.
           </p>
-          <p style={{ marginTop: 10 }}>
-            <b>What this margin is not</b>: the only cost subtracted here is people&apos;s time.
-            Servers, infrastructure, third-party licences and the rest of the cost of running the
-            platform are not recorded anywhere in Zoho, so they cannot enter this calculation. Read
-            these figures as a contribution margin on delivery effort, not as net margin: the real
-            profitability of every client sits below the number shown here, by an amount this page
-            has no way to measure.
-            {!viewer && snap.cost_gaps && snap.cost_gaps.hours > 0 && (
-              <> Separately, <b>{Math.round(snap.cost_gaps.hours).toLocaleString("en-GB")} hours</b>{" "}
-                across {snap.cost_gaps.projects} client projects were logged at a zero hourly cost,
-                so they cost nothing here — worth roughly{" "}
-                <b>{eur(snap.cost_gaps.estimated_cost)}</b> at the blended rate of{" "}
-                €{Math.round(snap.cost_gaps.blended_rate)}/h across everyone else. The{" "}
-                <b>Hourly Rates Missing</b> list at the top names every project and person concerned.</>
-            )}
-          </p>
-          <p style={{ marginTop: 10 }}>
-            <b>Year attribution</b>: many licences are invoiced once for a period that straddles two
-            calendar years, so booking the whole amount to the year of issue would measure the
-            invoicing rhythm rather than the business. Selecting a year therefore spreads each
-            invoice pro rata, day by day, across the <code>Licence Start Date</code> –{" "}
-            <code>Licence End Date</code> window of the CRM deal recorded on it; cost is the time
-            logged in that same year. Invoices with no usable licence period — one-off consultancy,
-            extra work billed against a licence deal more than four months outside its window — stay
-            on the invoice date.
-            {snap.accrual && snap.accrual.coverage != null && (
-              <> Licence periods were found for{" "}
-                <b>{pct(snap.accrual.coverage)}</b> of invoices ({snap.accrual.matched} of{" "}
-                {snap.accrual.considered}).</>
-            )}{" "}
-            The <b>All</b> view stays on the invoice date, so it reconciles to Zoho Books; per-year
-            figures will not add up to it exactly, and that difference is the licence value earned
-            outside the window.
-          </p>
-          <p style={{ marginTop: 10 }}>
-            <b>Lifetime value</b> is a different measure from everything else on this page: it is the
-            full amount of every deal of that client sitting in a Won stage in Zoho CRM, all time,
-            and it comes from the CRM rather than from Zoho Books. It therefore counts deals won and
-            never invoiced, and leaves out invoicing of deals won before this window — so it will
-            never reconcile with revenue, and is not meant to. Read it as a measure of how much the
-            client has been worth to the company, next to what they are worth this year.
-            {snap.ltv && snap.ltv.deals_outside_the_dashboard > 0 && (
-              <> A further <b>{snap.ltv.deals_outside_the_dashboard}</b> Won deals
-                ({eur(snap.ltv.amount_outside_the_dashboard)}) belong to clients with no revenue and
-                no project in this period, so they appear against no one here.</>
-            )}
-          </p>
-          <p style={{ marginTop: 10 }}>
-            <b>The two margins</b>: <b>all time</b> is the whole relationship, every year together,
-            from the first invoice to the last. A <b>year</b> is that year alone — the revenue
-            earned in it against the hours logged in it, including hours on projects that started
-            earlier and are still running. A project begun in 2025 and delivered through 2026 is
-            therefore counted in both, each time for the part that falls in that year, and never
-            twice. Reading them side by side is the point: a weak year on a client with a strong
-            history is a different thing from a client that has never paid for itself.
-          </p>
-          {snap.links && snap.links.crmid_missing > 0 && (
+          {!viewer && snap.rate_suspect && snap.rate_suspect.length > 0 && (
             <p style={{ marginTop: 10 }}>
-              <b>Deal and project are not always one to one</b>: the link is the{" "}
-              <code>CRMid</code> field on the project in Zoho Projects.{" "}
-              <b>{snap.links.crmid_missing}</b> client projects have it empty; for{" "}
-              {snap.links.crmid_missing_guessed} of them a deal with an identical name was found and
-              is shown as a guess, marked as such wherever it appears. A project with no link is
-              costed but earns no revenue of its own, so its workbook is a cost sheet. That is also
-              why the detail workbooks come in two cuts: one per deal, covering the whole deal, and
-              one per project, covering that project alone.
+              <b className="err">Hourly costs that look too low to be a full cost</b>: the payroll
+              gives{" "}
+              {snap.rate_suspect.map((r, i) => (
+                <span key={r.id + r.year}>
+                  {i > 0 ? ", " : ""}<b>{r.name}</b> €{r.rate.toFixed(2)}/h at {r.month}
+                  {r.monthly ? " (about €" + Math.round(r.monthly).toLocaleString("en-GB") + " a month)" : ""}
+                </span>
+              ))}
+              — that is their most recent month on the payroll. A figure like that is a placement or
+              an internship allowance, or a payroll line holding only part of the cost. Either way
+              their hours are costed below what they really cost, and every margin they touch is
+              flattered by the difference.
             </p>
           )}
           {snap.unmatched && snap.unmatched.length > 0 && (
@@ -841,10 +1023,35 @@ function UnlockDialog({ onClose, reason }) {
  * liste di cose da sistemare. Un file per deal e uno per progetto, perché i due
  * tagli non coincidono: deal e progetto non stanno sempre uno a uno.
  */
-function ExportBar({ token, missing, gaps, view, viewer, canUnlock }) {
-  const [busy, setBusy] = useState(false);
+/**
+ * La barra dei menù.
+ *
+ * Prima era una fila di otto pulsanti, e cresceva a ogni aggiunta: un export
+ * nuovo o una lista da correggere finivano accanto a quelli vecchi finché la
+ * riga non si leggeva più. Tre tendine — cosa porto via, cosa c'è da sistemare,
+ * come si leggono i numeri — tengono la stessa roba in un terzo dello spazio e
+ * dicono a che categoria appartiene ogni voce.
+ */
+function MenuBar({ token, missing, gaps, view, viewer, canUnlock, snap }) {
+  const [open, setOpen] = useState(null);
   const [msg, setMsg] = useState(null);
   const [ask, setAsk] = useState(null);
+  const [help, setHelp] = useState(null);
+
+  // Una tendina aperta si chiude con Esc e cliccando fuori: darle solo il clic
+  // sul titolo la lascia aperta addosso ai dati mentre si prova a leggerli.
+  useEffect(() => {
+    if (open === null) return undefined;
+    const away = (e) => { if (!e.target.closest(".mb-item")) setOpen(null); };
+    const esc = (e) => { if (e.key === "Escape") setOpen(null); };
+    document.addEventListener("click", away);
+    document.addEventListener("keydown", esc);
+    return () => {
+      document.removeEventListener("click", away);
+      document.removeEventListener("keydown", esc);
+    };
+  }, [open]);
+
   const url = (scope, extra) =>
     `/api/xlsx?type=${scope}` + (extra || "") + (token ? "&k=" + encodeURIComponent(token) : "");
 
@@ -852,19 +1059,19 @@ function ExportBar({ token, missing, gaps, view, viewer, canUnlock }) {
   // in memoria come blob è proprio ciò che falliva, e l'errore che arrivava
   // ("Load failed") non diceva niente. Un link normale lo scarica in streaming.
   const grab = (scope, extra) => {
+    setOpen(null);
     setMsg("Building the workbooks — the download starts on its own, it takes a minute.");
     const a = document.createElement("a");
     a.href = url(scope, extra);
     a.rel = "noopener";
     document.body.appendChild(a); a.click(); a.remove();
-    // Il browser non avvisa quando il download parte, quindi l'avviso si
-    // toglie da solo: lasciarlo lì per sempre fa pensare a un blocco.
     window.setTimeout(() => setMsg(null), 90000);
   };
 
-  // Un pulsante bloccato non sparisce e non porta a una pagina di errore:
-  // chiede la password lì dove sei.
+  // Una voce bloccata non sparisce e non porta a una pagina di errore: chiede
+  // la password lì dove sei.
   const locked = (scope, why, extra) => {
+    setOpen(null);
     if (viewer && canUnlock) { setAsk(why); return; }
     grab(scope, extra);
   };
@@ -873,6 +1080,31 @@ function ExportBar({ token, missing, gaps, view, viewer, canUnlock }) {
     await fetch("/api/unlock", { method: "DELETE" }).catch(() => {});
     window.location.reload();
   };
+
+  const menu = (id, label, children, badge) => (
+    <div className={"mb-item" + (open === id ? " on" : "")}>
+      <button className="mb-top" aria-expanded={open === id} aria-haspopup="true"
+              onClick={(e) => { e.stopPropagation(); setOpen(open === id ? null : id); }}>
+        {label}
+        {badge != null && <i className="mb-badge">{badge}</i>}
+        <span className="mb-caret" aria-hidden="true">▾</span>
+      </button>
+      {open === id && <div className="mb-drop" role="menu">{children}</div>}
+    </div>
+  );
+
+  const item = (label, onClick, opts) => {
+    const o = opts || {};
+    return (
+      <button className={"mb-opt" + (o.warn ? " warn" : "") + (o.lock ? " locked" : "")}
+              role="menuitem" onClick={onClick}>
+        <span className="mb-l">{label}{o.lock && <i className="lk" aria-hidden="true">🔒</i>}</span>
+        {o.hint && <span className="mb-h">{o.hint}</span>}
+      </button>
+    );
+  };
+
+  const fixes = (missing > 0 ? 1 : 0) + (gaps && gaps.hours > 0 ? 1 : 0);
 
   return (
     <div className="exportbar">
@@ -891,50 +1123,63 @@ function ExportBar({ token, missing, gaps, view, viewer, canUnlock }) {
           <button className="xb ghost" onClick={lock}>Lock again</button>
         </div>
       ))}
-      <div className="xb-in">
-        <span className="xb-t">
-          {viewer
-            ? "Download what you are looking at. The files carry the same figures as the screen, without the per-person cost behind them."
-            : "Download what you are looking at, or the detail behind it — one workbook per deal, one per project, one per client. Deal and project do not always match one to one, so both cuts exist."}
+
+      <div className="mb">
+        {menu("export", "Export to Excel", (
+          <>
+            {item("This view", () => grab("dashboard",
+              "&year=" + encodeURIComponent(view.year) +
+              (view.q ? "&q=" + encodeURIComponent(view.q) : "") +
+              (view.noExecus ? "&execus=0" : "")),
+              { hint: "the table as you have it now, plus a sheet by year" })}
+            <div className="mb-sep">One workbook each</div>
+            {item("Every deal", () => grab("deals"), { hint: "zip · the whole deal, invoices included" })}
+            {item("Every project", () => grab("projects"), { hint: "zip · that project alone" })}
+            {item("Every client", () => grab("clients"), { hint: "zip · every costed project behind the margin" })}
+            {viewer && (
+              <div className="mb-note">
+                These carry the same figures as the screen. The cost of the team and the
+                per-person detail are not in them.
+              </div>
+            )}
+          </>
+        ))}
+
+        {menu("fix", "Data to fix", (
+          <>
+            {missing > 0
+              ? item("Projects with no CRMid (" + missing + ")", () => grab("missing"),
+                  { warn: true, hint: "the link to the deal is missing — fill CRMid in Zoho Projects" })
+              : <div className="mb-note ok">Every project carries a CRMid. Nothing to fix here.</div>}
+            {gaps && gaps.hours > 0
+              ? item("Hours with no hourly cost (" +
+                     Math.round(gaps.hours).toLocaleString("en-GB") + " h)",
+                  () => locked("rates", "The list of hours with no hourly cost names every person concerned."),
+                  { warn: true, lock: viewer, hint: "those hours cost nothing here, so the margin is flattered" })
+              : <div className="mb-note ok">Every logged hour has an hourly cost.</div>}
+            <div className="mb-sep">Zoho Projects</div>
+            {item("Rate plan 2026 (preview)",
+              () => locked("rateplan",
+                "The rate plan lists every person and the hourly cost to write for them.", "&year=2026"),
+              { lock: viewer, hint: "what we would write on each user, before writing it" })}
+          </>
+        ), fixes || null)}
+
+        {menu("help", "How to read this", (
+          <>
+            {HELP.map((h) => item(h.t, () => { setOpen(null); setHelp(h.k); }, { hint: h.s }))}
+          </>
+        ))}
+
+        <span className="mb-spacer" />
+        <span className="mb-stamp">
+          {snap.source === "live" ? "Zoho live" : "snapshot"} · {fmtStamp(snap.generated_at)}
         </span>
-        <button className="xb" disabled={busy}
-                onClick={() => grab("dashboard", "&year=" + encodeURIComponent(view.year) +
-                  (view.q ? "&q=" + encodeURIComponent(view.q) : "") +
-                  (view.noExecus ? "&execus=0" : ""))}>
-          This view (.xlsx)
-        </button>
-        <button className="xb" disabled={busy} onClick={() => grab("deals")}>Deals (.zip)</button>
-        <button className="xb" disabled={busy} onClick={() => grab("projects")}>Projects (.zip)</button>
-        <button className="xb" disabled={busy} onClick={() => grab("clients")}>Clients (.zip)</button>
-        {/* La lista dei progetti da sistemare è una cosa da fare, non un export:
-            se non c'è niente da fare, il pulsante non deve nemmeno esistere. */}
-        {missing > 0 ? (
-          <button className="xb warn" disabled={busy} onClick={() => grab("missing")}>
-            CRMid Missing List ({missing})
-          </button>
-        ) : (
-          <span className="xb-ok">All projects with CRMid, none missing</span>
-        )}
-        <button className={"xb ghost" + (viewer ? " locked" : "")} disabled={busy}
-                onClick={() => locked("rateplan",
-                  "The rate plan lists every person and the hourly cost to write for them.",
-                  "&year=2026")}>
-          Rate plan 2026 (preview)
-          {viewer && <i className="lk" aria-hidden="true">🔒</i>}
-        </button>
-        {gaps && gaps.hours > 0 ? (
-          <button className={"xb warn" + (viewer ? " locked" : "")} disabled={busy}
-                  onClick={() => locked("rates",
-                    "The list of hours with no hourly cost names every person concerned.")}>
-            Hourly Rates Missing ({Math.round(gaps.hours).toLocaleString("en-GB")} h)
-            {viewer && <i className="lk" aria-hidden="true">🔒</i>}
-          </button>
-        ) : (
-          <span className="xb-ok">Every logged hour has an hourly cost</span>
-        )}
       </div>
+
       {msg && <div className="xb-msg">{msg}</div>}
       {ask !== null && <UnlockDialog reason={ask} onClose={() => setAsk(null)} />}
+      {help && <HelpDialog topic={help} snap={snap} onClose={() => setHelp(null)} />}
     </div>
   );
 }
