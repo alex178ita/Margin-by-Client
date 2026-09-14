@@ -329,9 +329,10 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
   const top5 = rows.slice().sort((a, b) => b.rev - a.rev).slice(0, 5);
   const top5Share = wTot ? top5.reduce((s, r) => s + r.rev, 0) / wTot : 0;
 
-  const th = (key, label, right) => (
+  const th = (key, label, right, tint) => (
     <th
-      className={(right ? "r" : "") + (sort.key === key ? " sorted" : "")}
+      className={(right ? "r" : "") + (tint ? " " + tint : "") +
+                 (sort.key === key ? " sorted" : "")}
       title={"Sort by " + label.toLowerCase()}
       scope="col"
       aria-sort={sort.key === key ? (sort.dir === "asc" ? "ascending" : "descending") : undefined}
@@ -546,16 +547,20 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
             <thead>
               <tr>
                 {th("cli", "Client")}
-                {th("rev", year === "all" ? "Revenue" : "Revenue " + year, true)}
+                {/* Due coppie affiancate, ognuna un valore e il margine che ne
+                    esce. La prima guarda quello che è entrato, la seconda quello
+                    che è stato venduto: tenerle vicine è l'unico modo perché il
+                    confronto si faccia con l'occhio e non a memoria. */}
+                {th("rev", year === "all" ? "Invoiced value" : "Accrued value " + year, true, "acc")}
+                {th("pct", year === "all" ? "Margin %" : "Margin % " + year, true, "acc")}
+                {th("amt", "Contract value", true, "crm")}
+                {th("pctamt", "Margin % on contract", true, "crm")}
                 {!viewer && th("cost", year === "all" ? "Real cost" : "Real cost " + year, true)}
                 {viewer && th("hrs", "Hours", true)}
                 {th("margin", year === "all" ? "Margin" : "Margin " + year, true)}
-                {th("pct", year === "all" ? "Margin %" : "Margin % " + year, true)}
-{/* Con "All" selezionato i due margini coincidono: la seconda
+                {/* Con "All" selezionato i due margini coincidono: la seconda
                     colonna compare solo quando c'è un anno da affiancare. */}
                 {year !== "all" && th("pctall", "Margin % all time", true)}
-                {th("amt", "Contract value", true)}
-                {th("pctamt", "Margin % on contract", true)}
                 {th("ltv", "Lifetime value", true)}
                 {th("inv", "Inv.", true)}
                 {th("open", "Outstanding", true)}
@@ -594,7 +599,45 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                       </div>
                       {via.length > 0 && <div className="via">via {via.join(", ")}</div>}
                     </td>
-                    <td className="r num">{eur(r.rev)}</td>
+                    {/* Prima coppia: quello che è entrato e il margine che ne
+                        esce. La barra si riempie in ambra. */}
+                    <td className="r num acc">{eur(r.rev)}</td>
+                    <td className="r acc">
+                      {r.marginPct == null ? <span className="na">—</span> : (
+                        <span className="mbar">
+                          <span className={"num " + band(r.marginPct)}>{pct(r.marginPct)}</span>
+                          <span className="track">
+                            <span className="fill fill-acc"
+                                  style={{ width: Math.min(100, Math.max(0, r.marginPct * 100)) + "%" }} />
+                          </span>
+                        </span>
+                      )}
+                    </td>
+                    {/* Seconda coppia: quello che è stato venduto secondo il CRM
+                        e il margine su quello. Barra verde, così le due misure
+                        non si confondono anche guardandole di sfuggita. */}
+                    <td className="r num crm">
+                      {r.amt == null ? <span className="na">—</span> : eurK(r.amt)}
+                    </td>
+                    <td className="r crm"
+                        title={r.amt == null ? "no CRM amount on this client's deals"
+                          : r.amtn + " deal" + (r.amtn === 1 ? "" : "s") + " worth " + eur(r.amt) +
+                            " against " + eur(r.costAll || 0) + " of cost" +
+                            (r.amt_early ? " — " + r.amt_early + " of them closed before " +
+                              (snap.min_year || "2025") + ", so part of their cost is outside this window" : "")}>
+                      {r.marginPctAmt == null ? <span className="na">—</span> : (
+                        <span className="mbar">
+                          <span className={"num " + band(r.marginPctAmt)}>
+                            {pct(r.marginPctAmt)}
+                            {r.amt_early > 0 && <i className="part">*</i>}
+                          </span>
+                          <span className="track">
+                            <span className="fill fill-con"
+                                  style={{ width: Math.min(100, Math.max(0, r.marginPctAmt * 100)) + "%" }} />
+                          </span>
+                        </span>
+                      )}
+                    </td>
                     {!viewer && (
                       <td className="r num">{r.cost == null ? <span className="na">—</span> : eur(r.cost)}</td>
                     )}
@@ -607,39 +650,11 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                     <td className={"r num " + band(r.marginPct)}>
                       {r.margin == null ? <span className="na">—</span> : eur(r.margin)}
                     </td>
-                    <td className="r">
-                      {r.marginPct == null ? <span className="na">—</span> : (
-                        <span className="mbar">
-                          <span className={"num " + band(r.marginPct)}>{pct(r.marginPct)}</span>
-                          <span className="track">
-                            <span className={"fill bg-" + band(r.marginPct)}
-                                  style={{ width: Math.min(100, Math.max(0, r.marginPct * 100)) + "%" }} />
-                          </span>
-                        </span>
-                      )}
-                    </td>
                     {year !== "all" && (
                       <td className={"r num dim " + band(r.marginPctAll)}>
                         {r.marginPctAll == null ? <span className="na">—</span> : pct(r.marginPctAll)}
                       </td>
                     )}
-                    {/* Il venduto secondo il CRM, e il margine misurato su
-                        quello. Colonne in tinta diversa perché rispondono a una
-                        domanda diversa: non "quanto abbiamo guadagnato" ma
-                        "quello che abbiamo venduto regge i costi". */}
-                    <td className="r num crm">
-                      {r.amt == null ? <span className="na">—</span> : eurK(r.amt)}
-                    </td>
-                    <td className={"r num crm " + band(r.marginPctAmt)}
-                        title={r.amt == null ? "no CRM amount on this client's deals"
-                          : r.amtn + " deal" + (r.amtn === 1 ? "" : "s") + " worth " + eur(r.amt) +
-                            " against " + eur(r.costAll || 0) + " of cost" +
-                            (r.amt_early ? " — " + r.amt_early + " of them closed before " +
-                              (snap.min_year || "2025") + ", so part of their cost is outside this window" : "")}>
-                      {r.marginPctAmt == null ? <span className="na">—</span> : (
-                        <>{pct(r.marginPctAmt)}{r.amt_early > 0 && <i className="part" title="part of the cost is outside the window">*</i>}</>
-                      )}
-                    </td>
                     {/* Quanto pesa il cliente per l'azienda: tutti i suoi deal
                         vinti in CRM, non il fatturato. Sono misure diverse e non
                         torneranno mai uguali — il titolo lo dice. */}
@@ -891,6 +906,14 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
             </tbody>
           </table>
         </div>
+
+        {rows.some((r) => r.amt_early > 0) && (
+          <p className="tablenote">
+            <i className="part">*</i> Part of this client&apos;s delivery cost falls before{" "}
+            {snap.min_year || "2025"}, where this dashboard does not count hours: some of their deals
+            were won earlier. The margin on contract therefore reads better than it was.
+          </p>
+        )}
 
         <footer className="note">
           <p>

@@ -467,7 +467,7 @@ a.pill:hover { border-color: var(--teal); color: var(--teal); }
           color: var(--ink-2); }
 .mb-top:hover { background: var(--surface); color: var(--ink); }
 .mb-item.on .mb-top { background: var(--surface); border-color: var(--line); color: var(--ink); }
-.mb-caret { font-size: 9px; color: var(--ink-3); }
+.mb-caret { font-size: 12px; line-height: 1; color: var(--ink-3); }
 .mb-badge { font-style: normal; font-size: 10.5px; font-weight: 700; line-height: 1;
             padding: 3px 6px; border-radius: 20px; background: var(--warn); color: #fff; }
 .mb-spacer { flex: 1; }
@@ -491,12 +491,20 @@ a.pill:hover { border-color: var(--teal); color: var(--teal); }
 .mb-note { font-size: 11.5px; color: var(--ink-3); padding: 8px 10px; line-height: 1.5; }
 .mb-note.ok { color: var(--ok); }
 
-/* Le colonne che guardano il CRM invece delle fatture: stessa tabella, tinta
-   diversa, perché rispondono a una domanda diversa. */
-th.crm, td.crm { background: color-mix(in srgb, #5b73a8 6%, transparent); }
+/* Due coppie di colonne, due tinte: a sinistra quello che è entrato, a destra
+   quello che è stato venduto. Servono a far vedere che sono due misure diverse
+   dello stesso rapporto, non due versioni dello stesso numero. */
+th.acc, td.acc { background: color-mix(in srgb, var(--warn) 5%, transparent); }
+th.crm, td.crm { background: color-mix(in srgb, #2f7a52 6%, transparent); }
 td.crm { color: var(--ink-2); }
-.det li.crm span:first-child { color: #5b73a8; }
+/* La barra prende il colore della coppia, il numero resta quello della soglia:
+   così si legge insieme di quale misura si tratta e se è buona. */
+.fill-acc { background: #d08700; }
+.fill-con { background: #2f7a52; }
+.det li.crm span:first-child { color: #2f7a52; }
 .part { font-style: normal; color: var(--warn); font-weight: 700; margin-left: 2px; }
+.tablenote { margin: 8px 2px 0; font-size: 12px; color: var(--ink-3); line-height: 1.5;
+             max-width: 96ch; }
 
 /* Pannello delle regole */
 .modal.help { max-width: 620px; }
