@@ -1,0 +1,13 @@
+{
+  "generated_at": null,
+  "source": "empty",
+  "period": { "from": null, "to": null },
+  "cost_status": "pending_analytics",
+  "cost_by_year": false,
+  "accrual": { "status": "unavailable", "deals": 0, "matched": 0, "considered": 0, "coverage": null },
+  "currency": "EUR",
+  "totals": { "revenue": 0, "open_balance": 0, "invoices": 0, "clients": 0, "cost": null },
+  "clients": [],
+  "projects": [],
+  "unmatched": []
+}
