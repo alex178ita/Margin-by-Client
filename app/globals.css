@@ -514,3 +514,12 @@ td.crm { color: var(--ink-2); }
 .hd-body b { color: var(--ink); }
 .hd-body code { font-size: 12px; background: var(--paper); padding: 1px 5px; border-radius: 4px; }
 .hd-note { border-top: 1px solid var(--line-soft); padding-top: 10px; color: var(--ink-3); }
+
+/* Le ore di debug interno: fuori dal margine, ma dichiarate. La variante fra
+   parentesi dice cosa succederebbe se le pagasse il cliente. */
+.alt { font-style: normal; font-size: 10.5px; font-weight: 500; color: var(--ink-3);
+       margin-left: 4px; }
+th.ifix, td.ifix { background: color-mix(in srgb, #7a5ea8 6%, transparent); color: var(--ink-2); }
+.det li.ifix span:first-child { color: #7a5ea8; }
+.det .tag.ifix { color: #7a5ea8; border-color: currentColor; }
+.det .tag.m .alt { color: inherit; opacity: 0.75; }

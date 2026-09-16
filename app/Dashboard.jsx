@@ -29,6 +29,7 @@ const HELP = [
   { k: "margins", t: "The three margins", s: "year, all time, and against the contract" },
   { k: "year", t: "Which year a revenue belongs to", s: "licences spread over the period they cover" },
   { k: "cost", t: "How an hour is costed", s: "payroll by month, leavers, placements" },
+  { k: "internal", t: "Internal fix hours", s: "our own defects, kept out of the client's margin" },
   { k: "link", t: "Deals and projects", s: "CRMid, guesses, deals served by several projects" },
   { k: "revenue", t: "What counts as revenue", s: "net of VAT, net of credit notes" },
   { k: "limits", t: "What this margin is not", s: "no servers, no infrastructure, no licences bought" },
@@ -123,6 +124,37 @@ function HelpDialog({ topic, snap, onClose }) {
           spent on the client. Internal projects (<code>---</code>, <code>::</code>) and pre-sales
           (<code>=</code>) stay out.
         </p>
+      </>
+    ),
+    internal: (
+      <>
+        <p>
+          Every project carries a task list called{" "}
+          <code>{snap.internal_fix ? snap.internal_fix.tasklist : "_INTERNAL DEBUG & FIX"}</code>.
+          Hours logged there are work on our own defects: the company pays for them, but the client
+          did not buy them, so they are <b>kept out of every margin on this page</b> and counted on
+          their own.
+        </p>
+        <p>
+          Beside each margin, in brackets and smaller, is what that margin would be if those hours
+          were charged to the client like any other. The gap between the two numbers is what our
+          defects cost that client&apos;s account — which is the figure worth watching, and the
+          reason for keeping them separate rather than simply deleting them.
+        </p>
+        <p>
+          The match is on the task list name, ignoring case, surrounding spaces and leading
+          underscores, so a list recreated by hand on a new project still counts. A log with no task
+          at all — a general entry, or time on a bug — cannot be internal and stays as client work.
+        </p>
+        {snap.internal_fix && (
+          <p className="hd-note">
+            {snap.internal_fix.hours > 0
+              ? <>Right now <b>{Math.round(snap.internal_fix.hours).toLocaleString("en-GB")} hours</b>{" "}
+                  across {snap.internal_fix.projects} projects are counted this way.</>
+              : <>No hours are on that list yet, so every margin on this page currently reads the same
+                  with or without it. Once time starts being logged there the brackets will appear.</>}
+          </p>
+        )}
       </>
     ),
     link: (
@@ -267,6 +299,17 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
           : year === "all" ? c.hours
           : costPerYear ? (c.cy && c.cy[year] ? c.cy[year].hours : 0)
           : null;
+        // Il debug interno resta fuori dal margine, ma si porta dietro il
+        // proprio costo: serve a mostrare fra parentesi quanto sarebbe il
+        // margine se quelle ore le pagasse il cliente.
+        const icost = !hasCost ? 0
+          : year === "all" ? (c.icost || 0)
+          : costPerYear ? (c.cy && c.cy[year] ? c.cy[year].ic || 0 : 0)
+          : 0;
+        const ihours = !hasCost ? 0
+          : year === "all" ? (c.ihours || 0)
+          : costPerYear ? (c.cy && c.cy[year] ? c.cy[year].ih || 0 : 0)
+          : 0;
         const margin = cost == null ? null : rev - cost;
         const marginAll = c.cost == null ? null : c.rt - c.cost;
         return {
@@ -278,6 +321,11 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
           // se il venduto regge i costi, e si muove prima delle fatture.
           marginAmt: c.cost == null || !c.amt ? null : c.amt - c.cost,
           marginPctAmt: c.cost == null || !c.amt ? null : (c.amt - c.cost) / c.amt,
+          icost, ihours,
+          // Le stesse due percentuali con dentro anche il debug interno.
+          marginPctIn: cost == null || rev === 0 || !icost ? null : (rev - cost - icost) / rev,
+          marginPctAmtIn: c.cost == null || !c.amt || !c.icost
+            ? null : (c.amt - c.cost - c.icost) / c.amt,
         };
       })
       .filter((c) => c.live)
@@ -296,6 +344,7 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
       : key === "pct" ? (r.marginPct == null ? -Infinity : r.marginPct)
       : key === "pctall" ? (r.marginPctAll == null ? -Infinity : r.marginPctAll)
       : key === "hrs" ? (r.hours == null ? -Infinity : r.hours)
+      : key === "ifix" ? (r.ihours || 0)
       : key === "ltv" ? (r.ltv == null ? -Infinity : r.ltv)
       : key === "amt" ? (r.amt == null ? -Infinity : r.amt)
       : key === "pctamt" ? (r.marginPctAmt == null ? -Infinity : r.marginPctAmt)
@@ -314,10 +363,13 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
     const revenue = rows.reduce((s, r) => s + r.rev, 0);
     const cost = costUsable ? rows.reduce((s, r) => s + (r.cost || 0), 0) : null;
     const hours = costUsable ? rows.reduce((s, r) => s + (r.hours || 0), 0) : null;
+    const icost = costUsable ? rows.reduce((s, r) => s + (r.icost || 0), 0) : 0;
+    const ihours = costUsable ? rows.reduce((s, r) => s + (r.ihours || 0), 0) : 0;
     const revAll = rows.reduce((s, r) => s + (r.rt || 0), 0);
     const costAll = hasCost ? rows.reduce((s, r) => s + (r.costAll || 0), 0) : null;
     return {
-      revenue, cost, hours, revAll,
+      revenue, cost, hours, revAll, icost, ihours,
+      marginPctIn: cost == null || !revenue || !icost ? null : (revenue - cost - icost) / revenue,
       margin: cost == null ? null : revenue - cost,
       marginPct: cost == null || revenue === 0 ? null : (revenue - cost) / revenue,
       marginAll: costAll == null ? null : revAll - costAll,
@@ -509,6 +561,8 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
             <div className={"v num " + band(tot.marginPct)}>{costUsable ? eur(tot.margin) : "—"}</div>
             <div className="s">
               {costUsable ? pct(tot.marginPct) + " of revenue" : "revenue less cost of delivery"}
+              {costUsable && tot.marginPctIn != null &&
+                " · " + pct(tot.marginPctIn) + " with internal fix"}
             </div>
           </div>
           <div className={"kpi" + (hasCost ? "" : " empty")}>
@@ -561,6 +615,8 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                 {/* Con "All" selezionato i due margini coincidono: la seconda
                     colonna compare solo quando c'è un anno da affiancare. */}
                 {year !== "all" && th("pctall", "Margin % all time", true)}
+                {/* Ore su difetti nostri: fuori dal margine, ma non nascoste. */}
+                {th("ifix", "Internal fix h", true)}
                 {th("ltv", "Lifetime value", true)}
                 {th("inv", "Inv.", true)}
                 {th("open", "Outstanding", true)}
@@ -605,7 +661,18 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                     <td className="r acc">
                       {r.marginPct == null ? <span className="na">—</span> : (
                         <span className="mbar">
-                          <span className={"num " + band(r.marginPct)}>{pct(r.marginPct)}</span>
+                          <span className={"num " + band(r.marginPct)}>
+                            {pct(r.marginPct)}
+                            {/* Fra parentesi il margine se anche le ore di
+                                debug interno le pagasse il cliente. */}
+                            {r.marginPctIn != null && (
+                              <i className="alt" title={"With the " +
+                                Math.round(r.ihours).toLocaleString("en-GB") +
+                                " hours of internal fix counted as client cost"}>
+                                ({pct(r.marginPctIn)})
+                              </i>
+                            )}
+                          </span>
                           <span className="track">
                             <span className="fill fill-acc"
                                   style={{ width: Math.min(100, Math.max(0, r.marginPct * 100)) + "%" }} />
@@ -630,6 +697,13 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                           <span className={"num " + band(r.marginPctAmt)}>
                             {pct(r.marginPctAmt)}
                             {r.amt_early > 0 && <i className="part">*</i>}
+                            {r.marginPctAmtIn != null && (
+                              <i className="alt" title={"With the " +
+                                Math.round(r.ihours).toLocaleString("en-GB") +
+                                " hours of internal fix counted as client cost"}>
+                                ({pct(r.marginPctAmtIn)})
+                              </i>
+                            )}
                           </span>
                           <span className="track">
                             <span className="fill fill-con"
@@ -655,6 +729,11 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                         {r.marginPctAll == null ? <span className="na">—</span> : pct(r.marginPctAll)}
                       </td>
                     )}
+                    <td className="r num ifix"
+                        title={r.ihours ? "Hours on " + (snap.internal_fix ? snap.internal_fix.tasklist : "the internal fix list") +
+                          ", kept out of this client's cost" : "no internal fix hours on this client"}>
+                      {r.ihours ? Math.round(r.ihours).toLocaleString("en-GB") : "—"}
+                    </td>
                     {/* Quanto pesa il cliente per l'azienda: tutti i suoi deal
                         vinti in CRM, non il fatturato. Sono misure diverse e non
                         torneranno mai uguali — il titolo lo dice. */}
@@ -669,7 +748,7 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                   </tr>,
                   isOpen && (
                     <tr key={r.c + "-d"} className="detail">
-                      <td colSpan={year === "all" ? 11 : 12}>
+                      <td colSpan={year === "all" ? 12 : 13}>
                         <div className="det">
                           <div>
                             <h4>Client</h4>
@@ -682,6 +761,12 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                                 <span>Share of the {year === "all" ? "period" : year}</span>
                                 <b className="num">{pct(wTot ? r.rev / wTot : 0)}</b>
                               </li>
+                              {r.ihours > 0 && (
+                                <li className="ifix">
+                                  <span>Internal fix hours (not in the margin)</span>
+                                  <b className="num">{Math.round(r.ihours).toLocaleString("en-GB")}</b>
+                                </li>
+                              )}
                               <li className="crm">
                                 <span>Contract value (CRM amount)</span>
                                 <b className="num">{r.amt == null ? "—" : eurK(r.amt)}</b>
@@ -791,6 +876,13 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                                   const pmp = pm == null || !pr ? null : pm / pr;
                                   const pmpAll = p.cost == null || !p.drev || p.dshare !== 1 ? null
                                     : (p.drev - p.cost) / p.drev;
+                                  // Ore di debug interno del progetto, e il
+                                  // margine che si avrebbe contandole.
+                                  const pih = year === "all" ? (p.ih || 0)
+                                    : (p.cy && p.cy[year] ? p.cy[year].ih || 0 : 0);
+                                  const pic = year === "all" ? (p.ic || 0)
+                                    : (p.cy && p.cy[year] ? p.cy[year].ic || 0 : 0);
+                                  const pmpIn = pmp == null || !pic || !pr ? null : (pr - pc - pic) / pr;
                                   // Quanto pesa il deal servito da questo
                                   // progetto sul cliente, nello stesso periodo.
                                   const psh = pr != null && r.rev ? pr / r.rev : null;
@@ -829,6 +921,7 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                                         {pmp != null && p.dshare === 1 && (
                                           <i className={"tag m " + band(pmp)}>
                                             margin {eurK(pm)} · {pct(pmp)}
+                                            {pmpIn != null && <em className="alt"> ({pct(pmpIn)})</em>}
                                             {year !== "all" ? " in " + year : ""}
                                           </i>
                                         )}
@@ -846,6 +939,12 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                                         )}
                                         {ph != null && (
                                           <i className="tag">{Math.round(ph).toLocaleString("en-GB")} h</i>
+                                        )}
+                                        {pih > 0 && (
+                                          <i className="tag ifix"
+                                             title="Hours on the internal fix list, kept out of this project's cost">
+                                            {Math.round(pih).toLocaleString("en-GB")} h internal fix
+                                          </i>
                                         )}
                                       </em>
                                     </span>
