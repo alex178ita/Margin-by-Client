@@ -1,4 +1,4 @@
-import { fetchProjectCosts, RATE_YEARS } from "../../../lib/zoho";
+import { fetchProjectCosts, RATE_YEARS, MIN_YEAR, timeLogColumns, parseCsv, num, runCostQueryRaw } from "../../../lib/zoho";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -18,9 +18,31 @@ const TTL = 10 * 60 * 1000;
 
 async function costs() {
   if (CACHE && CACHE.at > Date.now() - TTL) return CACHE;
-  const map = await fetchProjectCosts();
-  CACHE = { at: Date.now(), map };
+  const [map, hours] = await Promise.all([fetchProjectCosts(), hoursByBillable()]);
+  CACHE = { at: Date.now(), map, hours };
   return CACHE;
+}
+
+/**
+ * Ore per progetto divise fra fatturabili e non fatturabili. Il campo actual_hours del
+ * budget di Zoho Projects conta solo le ore Billable: qui serve il totale, con il dettaglio.
+ */
+async function hoursByBillable() {
+  const c = await timeLogColumns();
+  const sql =
+    `SELECT CONCAT("${c.project}",'') AS pid, "Status" AS st, SUM("${c.hours}")*1 AS hrs ` +
+    `FROM "Time Logs (Zoho Projects)" WHERE YEAR("${c.date}") >= ${MIN_YEAR()} ` +
+    `GROUP BY "${c.project}", "Status"`;
+  const out = {};
+  for (const r of parseCsv(await runCostQueryRaw(sql))) {
+    const pid = String(r.pid || "").trim();
+    if (!pid) continue;
+    const billable = !/non/i.test(String(r.st || ""));
+    const e = out[pid] || (out[pid] = { billable: 0, nonBillable: 0 });
+    if (billable) e.billable += num(r.hrs);
+    else e.nonBillable += num(r.hrs);
+  }
+  return out;
 }
 
 const round = (n) => Math.round((n || 0) * 100) / 100;
@@ -35,7 +57,7 @@ export async function GET(request) {
   if (!projectId) return Response.json({ ok: false, error: "projectId missing" }, { status: 400 });
 
   try {
-    const { at, map } = await costs();
+    const { at, map, hours } = await costs();
     const e = map[projectId];
     if (!e) return Response.json({ ok: false, error: "no time logs for this project" }, { status: 404 });
 
@@ -45,6 +67,8 @@ export async function GET(request) {
       projectId,
       totalCost: round(e.cost),
       loggedMinutes: Math.round((e.hours || 0) * 60),
+      billableMinutes: Math.round(((hours[projectId] || {}).billable || 0) * 60),
+      nonBillableMinutes: Math.round(((hours[projectId] || {}).nonBillable || 0) * 60),
       minutesWithoutRate: Math.round((e.unrated || 0) * 60),
       debugFixCost: round(e.icost),
       debugFixMinutes: Math.round((e.ihours || 0) * 60),
