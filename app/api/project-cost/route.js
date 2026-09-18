@@ -48,6 +48,20 @@ async function hoursByBillable() {
 const round = (n) => Math.round((n || 0) * 100) / 100;
 
 export async function GET(request) {
+  const url0 = new URL(request.url);
+  if (url0.searchParams.get("all") === "hours") {
+    const key0 = (process.env.PROJECT_SUMMARY_API_KEY || "").trim();
+    if (!key0 || (request.headers.get("authorization") || "") !== `Bearer ${key0}`) {
+      return Response.json({ ok: false, error: "unauthorised" }, { status: 401 });
+    }
+    try {
+      const { at, hours } = await costs();
+      return Response.json({ ok: true, asOf: new Date(at).toISOString(), from: MIN_YEAR(), hours });
+    } catch (e) {
+      return Response.json({ ok: false, error: e.message }, { status: 500 });
+    }
+  }
+
   const key = (process.env.PROJECT_SUMMARY_API_KEY || "").trim();
   const auth = request.headers.get("authorization") || "";
   if (!key || auth !== `Bearer ${key}`) {
