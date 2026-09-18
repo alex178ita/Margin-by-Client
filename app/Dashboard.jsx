@@ -248,6 +248,37 @@ function HelpDialog({ topic, snap, onClose }) {
   );
 }
 
+/**
+ * Gli Excel si costruiscono al momento e il download può partire dopo una
+ * decina di secondi: senza un segnale sembra che il clic non abbia fatto nulla
+ * e la gente clicca di nuovo. Questa striscia lo dice, e sparisce da sola.
+ */
+function notifyDownload(what) {
+  window.dispatchEvent(new CustomEvent("mbc-download", { detail: what || "Excel" }));
+}
+
+function DownloadToast() {
+  const [what, setWhat] = useState(null);
+  useEffect(() => {
+    let timer;
+    const on = (e) => {
+      setWhat(e.detail);
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => setWhat(null), 60000);
+    };
+    window.addEventListener("mbc-download", on);
+    return () => { window.removeEventListener("mbc-download", on); window.clearTimeout(timer); };
+  }, []);
+  if (!what) return null;
+  return (
+    <div className="dl-toast" role="status">
+      <span className="dl-spin" aria-hidden="true" />
+      Downloading {what} — the workbook is being built, this may take a while. The download starts on its own.
+      <button className="dl-x" onClick={() => setWhat(null)} aria-label="Hide">×</button>
+    </div>
+  );
+}
+
 const SEGMENT_COLORS = ["#0f7173", "#14a19a", "#4bbfae", "#8ad3c4", "#e8c547"];
 
 export default function Dashboard({ snap, warning, token, role, canUnlock }) {
@@ -400,6 +431,7 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
 
   return (
     <>
+      <DownloadToast />
       <header className="top">
         <div className="top-in">
           <div>
@@ -651,7 +683,7 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                         <span className="exp" aria-hidden="true">▸</span>
                         <a href={xlsx("client", r.c)} className="clidl"
                            title="Download every costed project behind this client's margin"
-                           onClick={(e) => e.stopPropagation()}>{r.c}</a>
+                           onClick={(e) => { e.stopPropagation(); notifyDownload(`the ${r.c} workbook`); }}>{r.c}</a>
                       </div>
                       {via.length > 0 && <div className="via">via {via.join(", ")}</div>}
                     </td>
@@ -963,7 +995,7 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                                         }
                                         return <a href={xlsx("project", p.id)} className="xl"
                                                   title="Download the detail workbook for this project"
-                                                  onClick={(e) => e.stopPropagation()}>{v}</a>;
+                                                  onClick={(e) => { e.stopPropagation(); notifyDownload(`the ${p.n || "project"} workbook`); }}>{v}</a>;
                                       })()}
                                     </b>
                                   </li>
@@ -1182,6 +1214,7 @@ function MenuBar({ token, missing, gaps, view, viewer, canUnlock, snap }) {
   // ("Load failed") non diceva niente. Un link normale lo scarica in streaming.
   const grab = (scope, extra) => {
     setOpen(null);
+    notifyDownload("the workbooks");
     setMsg("Building the workbooks — the download starts on its own, it takes a minute.");
     const a = document.createElement("a");
     a.href = url(scope, extra);
