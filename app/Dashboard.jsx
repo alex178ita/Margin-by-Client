@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { LOGO_DATA_URI } from "../lib/logo";
 
 const CRM_DEAL = (id) => `https://crm.zoho.eu/crm/org20069412455/tab/Potentials/${id}`;
@@ -1172,6 +1172,7 @@ function UnlockDialog({ onClose, reason }) {
 function MenuBar({ token, missing, gaps, view, viewer, canUnlock, snap }) {
   const [open, setOpen] = useState(null);
   const [msg, setMsg] = useState(null);
+  const msgTimer = useRef(null);
   const [ask, setAsk] = useState(null);
   const [help, setHelp] = useState(null);
 
@@ -1195,22 +1196,25 @@ function MenuBar({ token, missing, gaps, view, viewer, canUnlock, snap }) {
   // Il download va lasciato al browser: tirare giù lo zip con fetch e tenerlo
   // in memoria come blob è proprio ciò che falliva, e l'errore che arrivava
   // ("Load failed") non diceva niente. Un link normale lo scarica in streaming.
-  const grab = (scope, extra) => {
+  const grab = (scope, extra, label) => {
     setOpen(null);
-    setMsg("Building the workbooks — the download starts on its own, it takes a minute.");
+    // Il messaggio va acceso prima del click: il browser può bloccare il thread
+    // mentre apre il download, e un avviso che arriva dopo non lo vede nessuno.
+    setMsg(label || "the workbooks");
     const a = document.createElement("a");
     a.href = url(scope, extra);
     a.rel = "noopener";
     document.body.appendChild(a); a.click(); a.remove();
-    window.setTimeout(() => setMsg(null), 90000);
+    if (msgTimer.current) window.clearTimeout(msgTimer.current);
+    msgTimer.current = window.setTimeout(() => setMsg(null), 120000);
   };
 
   // Una voce bloccata non sparisce e non porta a una pagina di errore: chiede
   // la password lì dove sei.
-  const locked = (scope, why, extra) => {
+  const locked = (scope, why, extra, label) => {
     setOpen(null);
     if (viewer && canUnlock) { setAsk(why); return; }
-    grab(scope, extra);
+    grab(scope, extra, label);
   };
 
   const lock = async () => {
@@ -1267,12 +1271,12 @@ function MenuBar({ token, missing, gaps, view, viewer, canUnlock, snap }) {
             {item("This view", () => grab("dashboard",
               "&year=" + encodeURIComponent(view.year) +
               (view.q ? "&q=" + encodeURIComponent(view.q) : "") +
-              (view.noExecus ? "&execus=0" : "")),
+              (view.noExecus ? "&execus=0" : ""), "this view"),
               { hint: "the table as you have it now, plus a sheet by year" })}
             <div className="mb-sep">One workbook each</div>
-            {item("Every deal", () => grab("deals"), { hint: "zip · the whole deal, invoices included" })}
-            {item("Every project", () => grab("projects"), { hint: "zip · that project alone" })}
-            {item("Every client", () => grab("clients"), { hint: "zip · every costed project behind the margin" })}
+            {item("Every deal", () => grab("deals", null, "one workbook per deal"), { hint: "zip · the whole deal, invoices included" })}
+            {item("Every project", () => grab("projects", null, "one workbook per project"), { hint: "zip · that project alone" })}
+            {item("Every client", () => grab("clients", null, "one workbook per client"), { hint: "zip · every costed project behind the margin" })}
             {viewer && (
               <div className="mb-note">
                 These carry the same figures as the screen, hours person by person included.
@@ -1286,19 +1290,21 @@ function MenuBar({ token, missing, gaps, view, viewer, canUnlock, snap }) {
         {menu("fix", "Data to fix", (
           <>
             {missing > 0
-              ? item("Projects with no CRMid (" + missing + ")", () => grab("missing"),
+              ? item("Projects with no CRMid (" + missing + ")", () => grab("missing", null, "the projects with no CRMid"),
                   { warn: true, hint: "the link to the deal is missing — fill CRMid in Zoho Projects" })
               : <div className="mb-note ok">Every project carries a CRMid. Nothing to fix here.</div>}
             {gaps && gaps.hours > 0
               ? item("Hours with no hourly cost (" +
                      Math.round(gaps.hours).toLocaleString("en-GB") + " h)",
-                  () => locked("rates", "The list of hours with no hourly cost names every person concerned."),
+                  () => locked("rates", "The list of hours with no hourly cost names every person concerned.",
+                       null, "the hours with no hourly cost"),
                   { warn: true, lock: viewer, hint: "those hours cost nothing here, so the margin is flattered" })
               : <div className="mb-note ok">Every logged hour has an hourly cost.</div>}
             <div className="mb-sep">Zoho Projects</div>
             {item("Rate plan 2026 (preview)",
               () => locked("rateplan",
-                "The rate plan lists every person and the hourly cost to write for them.", "&year=2026"),
+                "The rate plan lists every person and the hourly cost to write for them.", "&year=2026",
+                "the 2026 rate plan"),
               { lock: viewer, hint: "what we would write on each user, before writing it" })}
           </>
         ), fixes || null)}
@@ -1315,7 +1321,16 @@ function MenuBar({ token, missing, gaps, view, viewer, canUnlock, snap }) {
         </span>
       </div>
 
-      {msg && <div className="xb-msg">{msg}</div>}
+      {msg && (
+        <div className="xb-msg" role="status" aria-live="polite">
+          <i className="spin" aria-hidden="true" />
+          <span>
+            <b>Preparing {msg}.</b> The file is built on the server and the download starts on
+            its own — a full zip can take a minute or two. You can keep using the page.
+          </span>
+          <button className="xb-x" onClick={() => setMsg(null)} aria-label="Hide this message">×</button>
+        </div>
+      )}
       {ask !== null && <UnlockDialog reason={ask} onClose={() => setAsk(null)} />}
       {help && <HelpDialog topic={help} snap={snap} onClose={() => setHelp(null)} />}
     </div>
