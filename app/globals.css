@@ -302,6 +302,16 @@ button.xb:disabled { opacity: .55; cursor: default; }
   border-radius: 6px;
 }
 .xb-msg b { font-weight: 600; }
+/* Finito è verde, in corso è teal: il colore da solo dice a che punto siamo,
+   senza costringere a rileggere la frase. */
+.xb-msg.done { background: color-mix(in srgb, var(--ok) 10%, var(--surface));
+               border-color: color-mix(in srgb, var(--ok) 30%, var(--line));
+               border-left-color: var(--ok); }
+.xb-msg .tick {
+  flex: none; width: 15px; height: 15px; margin-top: 1px;
+  font-size: 12px; line-height: 15px; text-align: center; font-style: normal;
+  color: #fff; background: var(--ok); border-radius: 50%;
+}
 .xb-msg .spin {
   flex: none; width: 14px; height: 14px; margin-top: 2px;
   border: 2px solid var(--line); border-top-color: var(--teal); border-radius: 50%;

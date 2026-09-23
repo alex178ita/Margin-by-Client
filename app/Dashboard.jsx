@@ -1193,20 +1193,56 @@ function MenuBar({ token, missing, gaps, view, viewer, canUnlock, snap }) {
   const url = (scope, extra) =>
     `/api/xlsx?type=${scope}` + (extra || "") + (token ? "&k=" + encodeURIComponent(token) : "");
 
-  // Il download va lasciato al browser: tirare giù lo zip con fetch e tenerlo
-  // in memoria come blob è proprio ciò che falliva, e l'errore che arrivava
-  // ("Load failed") non diceva niente. Un link normale lo scarica in streaming.
-  const grab = (scope, extra, label) => {
-    setOpen(null);
-    // Il messaggio va acceso prima del click: il browser può bloccare il thread
-    // mentre apre il download, e un avviso che arriva dopo non lo vede nessuno.
-    setMsg(label || "the workbooks");
+  /**
+   * Scaricare con fetch, e col link solo se fetch non ce la fa.
+   *
+   * Con un link normale il browser si prende il file da solo, ma la pagina non
+   * sa più niente: né quando comincia né quando finisce, e l'attesa di un minuto
+   * resta senza risposta. Con fetch invece si sa entrambe le cose, e si può dire
+   * "fatto, è nei Download" con il nome del file. Era così che funzionava prima,
+   * e va bene finché il file sta in memoria: quando non ci sta — o la rete cade
+   * a metà — si ricade sul link, che scarica in streaming senza passare di lì.
+   */
+  const stop = () => { if (msgTimer.current) window.clearTimeout(msgTimer.current); };
+
+  const viaLink = (href) => {
     const a = document.createElement("a");
-    a.href = url(scope, extra);
+    a.href = href;
     a.rel = "noopener";
     document.body.appendChild(a); a.click(); a.remove();
-    if (msgTimer.current) window.clearTimeout(msgTimer.current);
-    msgTimer.current = window.setTimeout(() => setMsg(null), 120000);
+  };
+
+  const grab = async (scope, extra, label) => {
+    setOpen(null);
+    stop();
+    const what = label || "the workbooks";
+    const href = url(scope, extra);
+    setMsg({ state: "working", what });
+
+    try {
+      const r = await fetch(href);
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({}));
+        throw new Error(j.error || "the server answered " + r.status);
+      }
+      const cd = r.headers.get("content-disposition") || "";
+      const m = /filename="?([^"]+)"?/i.exec(cd);
+      const name = (m && m[1]) || "margin_export.xlsx";
+      const blob = await r.blob();
+      const obj = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = obj; a.download = name;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(obj);
+      setMsg({ state: "done", what, name, size: blob.size });
+      msgTimer.current = window.setTimeout(() => setMsg(null), 20000);
+    } catch (e) {
+      // Il file può essere troppo grande per tenerlo in memoria: il link lo
+      // prende comunque, ma da lì in poi la fine non è più osservabile.
+      setMsg({ state: "fallback", what, why: e.message });
+      viaLink(href);
+      msgTimer.current = window.setTimeout(() => setMsg(null), 120000);
+    }
   };
 
   // Una voce bloccata non sparisce e non porta a una pagina di errore: chiede
@@ -1322,19 +1358,36 @@ function MenuBar({ token, missing, gaps, view, viewer, canUnlock, snap }) {
       </div>
 
       {msg && (
-        <div className="xb-msg" role="status" aria-live="polite">
-          <i className="spin" aria-hidden="true" />
+        <div className={"xb-msg " + msg.state} role="status" aria-live="polite">
+          {msg.state === "done"
+            ? <i className="tick" aria-hidden="true">✓</i>
+            : <i className="spin" aria-hidden="true" />}
           <span>
-            <b>Preparing {msg}.</b> The file is built on the server and the download starts on
-            its own — a full zip can take a minute or two. You can keep using the page.
+            {msg.state === "working" && (
+              <><b>Preparing {msg.what}…</b> It is built on the server — a full zip takes a minute
+                or two. The download starts by itself when it is ready.</>
+            )}
+            {msg.state === "done" && (
+              <><b>Downloaded {msg.name}</b> — {fmtSize(msg.size)}. Look in your Downloads folder.</>
+            )}
+            {msg.state === "fallback" && (
+              <><b>Preparing {msg.what}…</b> The browser is taking it directly ({msg.why}), so this
+                message cannot tell you when it lands — check your Downloads folder in a minute.</>
+            )}
           </span>
-          <button className="xb-x" onClick={() => setMsg(null)} aria-label="Hide this message">×</button>
+          <button className="xb-x" onClick={() => { stop(); setMsg(null); }}
+                  aria-label="Hide this message">×</button>
         </div>
       )}
       {ask !== null && <UnlockDialog reason={ask} onClose={() => setAsk(null)} />}
       {help && <HelpDialog topic={help} snap={snap} onClose={() => setHelp(null)} />}
     </div>
   );
+}
+
+function fmtSize(n) {
+  if (!n && n !== 0) return "";
+  return n >= 1048576 ? (n / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1024)) + " KB";
 }
 
 function fmtDate(s) {
