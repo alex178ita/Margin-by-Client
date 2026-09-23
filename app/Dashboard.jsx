@@ -3,6 +3,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LOGO_DATA_URI } from "../lib/logo";
 
+// Marcatore di build. Serve a una cosa sola: guardare la pagina e sapere quale
+// versione sta girando davvero, senza doverlo dedurre dal comportamento.
+const BUILD = "2026-09-24 · toast";
+
 const CRM_DEAL = (id) => `https://crm.zoho.eu/crm/org20069412455/tab/Potentials/${id}`;
 const PROJECT = (id) => `https://projects.zoho.eu/portal/kleecksprojects#dashboard/${id}`;
 
@@ -1354,11 +1358,16 @@ function MenuBar({ token, missing, gaps, view, viewer, canUnlock, snap }) {
         <span className="mb-spacer" />
         <span className="mb-stamp">
           {snap.source === "live" ? "Zoho live" : "snapshot"} · {fmtStamp(snap.generated_at)}
+          <i className="mb-build">build {BUILD}</i>
         </span>
       </div>
 
+      {/* Il riquadro è a posizione fissa, non in colonna sotto i menu: dentro il
+          Web Tab del CRM la pagina sta in un iframe e un avviso in mezzo al
+          flusso può finire fuori dalla parte visibile senza che nessuno lo veda
+          mai. Così sta sempre in basso a destra, sopra tutto il resto. */}
       {msg && (
-        <div className={"xb-msg " + msg.state} role="status" aria-live="polite">
+        <div className={"xb-toast " + msg.state} role="status" aria-live="polite">
           {msg.state === "done"
             ? <i className="tick" aria-hidden="true">✓</i>
             : <i className="spin" aria-hidden="true" />}

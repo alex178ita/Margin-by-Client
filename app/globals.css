@@ -294,25 +294,43 @@ button.xb:disabled { opacity: .55; cursor: default; }
    click ha fatto qualcosa. Un Excel grosso ci mette un minuto buono e senza
    questo la pagina sembra ferma, quindi sta in evidenza, con l'indicatore che
    gira, finché non lo si chiude. */
-.xb-msg {
+.mb-build { font-style: normal; margin-left: 8px; opacity: 0.75; }
+
+/* Fisso in basso a destra: non dipende da dove sei con lo scroll né da quanto
+   è alto l'iframe del Web Tab. */
+.xb-toast {
+  position: fixed; right: 18px; bottom: 18px; z-index: 60; max-width: 380px;
   display: flex; align-items: flex-start; gap: 10px;
-  margin-top: 10px; padding: 10px 12px;
+  padding: 12px 14px;
+  box-shadow: 0 6px 24px rgba(13, 27, 42, 0.18);
+  animation: xbrise 0.18s ease-out;
+}
+@keyframes xbrise { from { opacity: 0; transform: translateY(8px); } }
+@media (prefers-reduced-motion: reduce) { .xb-toast { animation: none; } }
+@media (max-width: 640px) {
+  .xb-toast { right: 12px; left: 12px; bottom: 12px; max-width: none; }
+}
+
+.xb-msg, .xb-toast {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 10px 12px;
   font-size: 13px; line-height: 1.45; color: var(--ink);
-  background: var(--surface-2); border: 1px solid var(--line); border-left: 3px solid var(--teal);
+  background: var(--surface); border: 1px solid var(--line); border-left: 3px solid var(--teal);
   border-radius: 6px;
 }
-.xb-msg b { font-weight: 600; }
+.xb-msg { margin-top: 10px; background: var(--surface-2); }
+.xb-msg b, .xb-toast b { font-weight: 600; }
 /* Finito è verde, in corso è teal: il colore da solo dice a che punto siamo,
    senza costringere a rileggere la frase. */
-.xb-msg.done { background: color-mix(in srgb, var(--ok) 10%, var(--surface));
+.xb-toast.done, .xb-msg.done { background: color-mix(in srgb, var(--ok) 10%, var(--surface));
                border-color: color-mix(in srgb, var(--ok) 30%, var(--line));
                border-left-color: var(--ok); }
-.xb-msg .tick {
+.xb-toast .tick, .xb-msg .tick {
   flex: none; width: 15px; height: 15px; margin-top: 1px;
   font-size: 12px; line-height: 15px; text-align: center; font-style: normal;
   color: #fff; background: var(--ok); border-radius: 50%;
 }
-.xb-msg .spin {
+.xb-msg .spin, .xb-toast .spin {
   flex: none; width: 14px; height: 14px; margin-top: 2px;
   border: 2px solid var(--line); border-top-color: var(--teal); border-radius: 50%;
   animation: xbspin 0.8s linear infinite;
