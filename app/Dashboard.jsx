@@ -461,17 +461,32 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
           </div>
         )}
 
-        {(warning || !hasCost) && (
+        {(warning || !hasCost || snap.cost_stale) && (
           <div className="notice">
             <div>
-              <strong>{hasCost ? "Note" : "Costs not connected yet"}</strong>
+              <strong>
+                {!hasCost ? "Costs not connected yet"
+                 : snap.cost_stale && !warning ? "Costs are from the last good refresh"
+                 : "Note"}
+              </strong>
               <p>
                 {warning ||
-                  "Real costs come from Zoho Analytics (Time Logs × Cost Per Hour, per-person rate). " +
-                  "Until that connection works the page shows the revenue side only."}
+                  (snap.cost_stale
+                    ? "Zoho Analytics serves these figures through a job queue. That queue did not " +
+                      "answer in time on this refresh, so the page is showing the costs it already had."
+                    : "Real costs come from Zoho Analytics (Time Logs × Cost Per Hour, per-person rate). " +
+                      "Until that connection works the page shows the revenue side only.")}
               </p>
               {!warning && snap.cost_error && (
                 <p className="err">Zoho Analytics said: {snap.cost_error}</p>
+              )}
+              {!warning && snap.cost_stale && (
+                <p className="err">
+                  Zoho Analytics said: {snap.cost_stale_reason}. The costs on this page are the
+                  last ones that came through, from{" "}
+                  {new Date(snap.cost_stale).toLocaleString("en-GB")}. Refresh again in a few
+                  minutes to bring them up to date.
+                </p>
               )}
               {!warning && !accrual && snap.accrual && snap.accrual.error && (
                 <p className="err">Licence periods: {snap.accrual.error}</p>
