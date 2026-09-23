@@ -5,7 +5,7 @@ import { LOGO_DATA_URI } from "../lib/logo";
 
 // Marcatore di build. Serve a una cosa sola: guardare la pagina e sapere quale
 // versione sta girando davvero, senza doverlo dedurre dal comportamento.
-const BUILD = "2026-09-24 · toast";
+const BUILD = "24/09 toast";
 
 const CRM_DEAL = (id) => `https://crm.zoho.eu/crm/org20069412455/tab/Potentials/${id}`;
 const PROJECT = (id) => `https://projects.zoho.eu/portal/kleecksprojects#dashboard/${id}`;
@@ -411,7 +411,7 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
             <img className="logo" src={LOGO_DATA_URI} alt="Kleecks" />
             <h1>Margin by Clients <span className="qual">(before infrastructure costs)</span></h1>
             <div className="beta">
-              v.0.1 — Beta for testing
+              v.0.1 — Beta for testing · build {BUILD}
               {viewer && <span className="viewbadge">summary view</span>}
             </div>
             {snap.rate_years && (
@@ -1358,7 +1358,6 @@ function MenuBar({ token, missing, gaps, view, viewer, canUnlock, snap }) {
         <span className="mb-spacer" />
         <span className="mb-stamp">
           {snap.source === "live" ? "Zoho live" : "snapshot"} · {fmtStamp(snap.generated_at)}
-          <i className="mb-build">build {BUILD}</i>
         </span>
       </div>
 
