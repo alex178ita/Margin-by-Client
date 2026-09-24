@@ -5,7 +5,7 @@ import { LOGO_DATA_URI } from "../lib/logo";
 
 // Marcatore di build. Serve a una cosa sola: guardare la pagina e sapere quale
 // versione sta girando davvero, senza doverlo dedurre dal comportamento.
-const BUILD = "24/09 inline+timer";
+const BUILD = "24/09 links";
 
 // Oltre questo, la richiesta si interrompe e il file passa dal link diretto.
 const WAIT_MAX = 180000;
@@ -260,11 +260,94 @@ function HelpDialog({ topic, snap, onClose }) {
   );
 }
 
+/**
+ * Lo stato di un download, in un punto solo.
+ *
+ * Serviva sia alla barra dei menu sia ai link dentro la tabella — nome del
+ * cliente, del deal, del progetto — che scaricano anche loro un Excel e che
+ * fino a ieri non dicevano niente: si cliccava e per un minuto non succedeva
+ * nulla di visibile. Tenerlo qui significa un solo messaggio alla volta e lo
+ * stesso comportamento ovunque, invece di due copie che divergono.
+ */
+function useDownload(token) {
+  const [msg, setMsg] = useState(null);
+  const [tick, setTick] = useState(0);
+  const timer = useRef(null);
+
+  // Il contatore che sale distingue "ci sta lavorando" da "è piantato":
+  // una rotellina che gira dice la stessa cosa in entrambi i casi.
+  useEffect(() => {
+    if (!msg || msg.state === "done") return undefined;
+    const t = window.setInterval(() => setTick((n) => n + 1), 1000);
+    return () => window.clearInterval(t);
+  }, [msg]);
+
+  const dismiss = () => {
+    if (timer.current) window.clearTimeout(timer.current);
+    setMsg(null);
+  };
+
+  const start = async (href, label) => {
+    if (timer.current) window.clearTimeout(timer.current);
+    const what = label || "the workbook";
+    setMsg({ state: "working", what, at: Date.now() });
+
+    // Un limite ci vuole: senza, se la richiesta non torna la scritta "sto
+    // preparando" resta accesa per sempre, che è peggio di non averla affatto.
+    const ac = new AbortController();
+    const cut = window.setTimeout(() => ac.abort(), WAIT_MAX);
+
+    try {
+      const r = await fetch(href, { signal: ac.signal });
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({}));
+        throw new Error(j.error || "the server answered " + r.status);
+      }
+      const cd = r.headers.get("content-disposition") || "";
+      const m = /filename="?([^"]+)"?/i.exec(cd);
+      const name = (m && m[1]) || "margin_export.xlsx";
+      const blob = await r.blob();
+      const obj = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = obj; a.download = name;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(obj);
+      setMsg({ state: "done", what, name, size: blob.size });
+      timer.current = window.setTimeout(() => setMsg(null), 20000);
+    } catch (e) {
+      // Troppo grande per la memoria, o più lento del limite: il link diretto
+      // lo prende comunque, ma da lì in poi la fine non è più osservabile.
+      const why = e.name === "AbortError"
+        ? "it went past " + Math.round(WAIT_MAX / 1000) + "s"
+        : e.message;
+      setMsg({ state: "fallback", what, why, at: Date.now() });
+      const a = document.createElement("a");
+      a.href = href; a.rel = "noopener";
+      document.body.appendChild(a); a.click(); a.remove();
+      timer.current = window.setTimeout(() => setMsg(null), 120000);
+    } finally {
+      window.clearTimeout(cut);
+    }
+  };
+
+  return { msg, tick, start, dismiss };
+}
+
 const SEGMENT_COLORS = ["#0f7173", "#14a19a", "#4bbfae", "#8ad3c4", "#e8c547"];
 
 export default function Dashboard({ snap, warning, token, role, canUnlock }) {
   const xlsx = (type, id) =>
     `/api/xlsx?type=${type}&id=${encodeURIComponent(id)}` + (token ? `&k=${encodeURIComponent(token)}` : "");
+  const dl = useDownload(token);
+  // I link della tabella restano link veri — indirizzo copiabile, apri in una
+  // scheda nuova — ma il clic normale passa di qui, così anche loro mostrano
+  // lo stato invece di lasciare la pagina muta.
+  const grabLink = (e, href, label) => {
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    dl.start(href, label);
+  };
   const accrual = snap.accrual && snap.accrual.status === "ok";
 
   const viewer = role === "viewer";
@@ -477,8 +560,9 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
           <div className="notice">
             <div>
               <strong>
-                {!hasCost ? "Costs not connected yet"
-                 : snap.cost_stale && !warning ? "Costs are from the last good refresh"
+                {warning ? "Zoho could not be reached"
+                 : !hasCost ? "Zoho did not answer in time — reload the page"
+                 : snap.cost_stale ? "Costs are from the last good refresh"
                  : "Note"}
               </strong>
               <p>
@@ -486,9 +570,21 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                   (snap.cost_stale
                     ? "Zoho Analytics serves these figures through a job queue. That queue did not " +
                       "answer in time on this refresh, so the page is showing the costs it already had."
-                    : "Real costs come from Zoho Analytics (Time Logs × Cost Per Hour, per-person rate). " +
-                      "Until that connection works the page shows the revenue side only.")}
+                    : "The cost side comes from Zoho Analytics, which serves it through a job queue. " +
+                      "When the queue is busy the answer does not arrive before the page has to be " +
+                      "rendered, and the cost tiles read \u201cpending\u201d. It is a wait, not a broken " +
+                      "connection: reloading almost always brings the numbers back.")}
               </p>
+              {/* Il rimedio è una ricarica, quindi tanto vale metterla qui invece
+                  di lasciare che se la cerchi ogni volta nella barra del browser —
+                  che dentro il Web Tab del CRM per giunta non ricarica l'iframe. */}
+              {!hasCost && !warning && (
+                <p>
+                  <button className="xb" onClick={() => window.location.reload()}>
+                    Reload now
+                  </button>
+                </p>
+              )}
               {!warning && snap.cost_error && (
                 <p className="err">Zoho Analytics said: {snap.cost_error}</p>
               )}
@@ -508,7 +604,7 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
         )}
 
 
-        <MenuBar token={token} viewer={viewer} canUnlock={canUnlock} snap={snap}
+        <MenuBar token={token} viewer={viewer} canUnlock={canUnlock} snap={snap} dl={dl}
                  missing={(snap.links && snap.links.crmid_missing) || 0}
                  gaps={snap.cost_gaps || null}
                  view={{ year, q, noExecus }} />
@@ -678,7 +774,7 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                         <span className="exp" aria-hidden="true">▸</span>
                         <a href={xlsx("client", r.c)} className="clidl"
                            title="Download every costed project behind this client's margin"
-                           onClick={(e) => e.stopPropagation()}>{r.c}</a>
+                           onClick={(e) => grabLink(e, xlsx("client", r.c), r.c)}>{r.c}</a>
                       </div>
                       {via.length > 0 && <div className="via">via {via.join(", ")}</div>}
                     </td>
@@ -867,7 +963,7 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                                         (sh == null ? "" : " — " + pct(sh) + " of " + r.c + " in the same period");
                                       return d.id ? (
                                         <a href={xlsx("deal", d.id)} className="xl" title={tip}
-                                           onClick={(e) => e.stopPropagation()}>{label}</a>
+                                           onClick={(e) => grabLink(e, xlsx("deal", d.id), d.name || "this deal")}>{label}</a>
                                       ) : <span title={tip}>{label}</span>;
                                     })()}
                                   </b>
@@ -990,7 +1086,7 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                                         }
                                         return <a href={xlsx("project", p.id)} className="xl"
                                                   title="Download the detail workbook for this project"
-                                                  onClick={(e) => e.stopPropagation()}>{v}</a>;
+                                                  onClick={(e) => grabLink(e, xlsx("project", p.id), p.n || "this project")}>{v}</a>;
                                       })()}
                                     </b>
                                   </li>
@@ -1181,20 +1277,9 @@ function UnlockDialog({ onClose, reason }) {
  * come si leggono i numeri — tengono la stessa roba in un terzo dello spazio e
  * dicono a che categoria appartiene ogni voce.
  */
-function MenuBar({ token, missing, gaps, view, viewer, canUnlock, snap }) {
+function MenuBar({ token, missing, gaps, view, viewer, canUnlock, snap, dl }) {
+  const { msg, tick } = dl;
   const [open, setOpen] = useState(null);
-  const [msg, setMsg] = useState(null);
-  const msgTimer = useRef(null);
-  const [tick, setTick] = useState(0);
-
-  // Il contatore che sale è quello che distingue "ci sta lavorando" da
-  // "è piantato": una rotellina che gira da sola dice la stessa cosa in
-  // entrambi i casi.
-  useEffect(() => {
-    if (!msg || msg.state === "done") return undefined;
-    const t = window.setInterval(() => setTick((n) => n + 1), 1000);
-    return () => window.clearInterval(t);
-  }, [msg]);
   const [ask, setAsk] = useState(null);
   const [help, setHelp] = useState(null);
 
@@ -1215,68 +1300,10 @@ function MenuBar({ token, missing, gaps, view, viewer, canUnlock, snap }) {
   const url = (scope, extra) =>
     `/api/xlsx?type=${scope}` + (extra || "") + (token ? "&k=" + encodeURIComponent(token) : "");
 
-  /**
-   * Scaricare con fetch, e col link solo se fetch non ce la fa.
-   *
-   * Con un link normale il browser si prende il file da solo, ma la pagina non
-   * sa più niente: né quando comincia né quando finisce, e l'attesa di un minuto
-   * resta senza risposta. Con fetch invece si sa entrambe le cose, e si può dire
-   * "fatto, è nei Download" con il nome del file. Era così che funzionava prima,
-   * e va bene finché il file sta in memoria: quando non ci sta — o la rete cade
-   * a metà — si ricade sul link, che scarica in streaming senza passare di lì.
-   */
-  const stop = () => { if (msgTimer.current) window.clearTimeout(msgTimer.current); };
-
-  const viaLink = (href) => {
-    const a = document.createElement("a");
-    a.href = href;
-    a.rel = "noopener";
-    document.body.appendChild(a); a.click(); a.remove();
-  };
-
-  const grab = async (scope, extra, label) => {
+  // Le voci del menu passano dallo stesso posto dei link nella tabella.
+  const grab = (scope, extra, label) => {
     setOpen(null);
-    stop();
-    const what = label || "the workbooks";
-    const href = url(scope, extra);
-    setMsg({ state: "working", what, at: Date.now() });
-
-    // Un limite ci vuole. Senza, se la richiesta non torna — Analytics in coda,
-    // la funzione che scade, la rete che cade senza dirlo — la scritta "sto
-    // preparando" resta accesa per sempre, che è peggio di non averla affatto.
-    const ac = new AbortController();
-    const cut = window.setTimeout(() => ac.abort(), WAIT_MAX);
-
-    try {
-      const r = await fetch(href, { signal: ac.signal });
-      if (!r.ok) {
-        const j = await r.json().catch(() => ({}));
-        throw new Error(j.error || "the server answered " + r.status);
-      }
-      const cd = r.headers.get("content-disposition") || "";
-      const m = /filename="?([^"]+)"?/i.exec(cd);
-      const name = (m && m[1]) || "margin_export.xlsx";
-      const blob = await r.blob();
-      const obj = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = obj; a.download = name;
-      document.body.appendChild(a); a.click(); a.remove();
-      URL.revokeObjectURL(obj);
-      setMsg({ state: "done", what, name, size: blob.size });
-      msgTimer.current = window.setTimeout(() => setMsg(null), 20000);
-    } catch (e) {
-      // Il file può essere troppo grande per tenerlo in memoria, o il server
-      // può metterci più del limite: il link lo prende comunque, ma da lì in
-      // poi la fine non è più osservabile.
-      const why = e.name === "AbortError"
-        ? "it went past " + Math.round(WAIT_MAX / 1000) + "s"
-        : e.message;
-      setMsg({ state: "fallback", what, why, at: Date.now() });
-      viaLink(href);
-      msgTimer.current = window.setTimeout(() => setMsg(null), 120000);
-    } finally {
-      window.clearTimeout(cut);
-    }
+    dl.start(url(scope, extra), label);
   };
 
   // Una voce bloccata non sparisce e non porta a una pagina di errore: chiede
@@ -1424,7 +1451,7 @@ function MenuBar({ token, missing, gaps, view, viewer, canUnlock, snap }) {
                 message cannot tell you when it lands — check your Downloads folder in a minute.</>
             )}
           </span>
-          <button className="xb-x" onClick={() => { stop(); setMsg(null); }}
+          <button className="xb-x" onClick={dl.dismiss}
                   aria-label="Hide this message">×</button>
         </div>
       )}
