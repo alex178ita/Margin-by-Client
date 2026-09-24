@@ -5,7 +5,15 @@ import { LOGO_DATA_URI } from "../lib/logo";
 
 // Marcatore di build. Serve a una cosa sola: guardare la pagina e sapere quale
 // versione sta girando davvero, senza doverlo dedurre dal comportamento.
-const BUILD = "24/09 toast";
+const BUILD = "24/09 inline+timer";
+
+// Oltre questo, la richiesta si interrompe e il file passa dal link diretto.
+const WAIT_MAX = 180000;
+
+const mmss = (ms) => {
+  const s = Math.max(0, Math.round(ms / 1000));
+  return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
+};
 
 const CRM_DEAL = (id) => `https://crm.zoho.eu/crm/org20069412455/tab/Potentials/${id}`;
 const PROJECT = (id) => `https://projects.zoho.eu/portal/kleecksprojects#dashboard/${id}`;
@@ -1177,6 +1185,16 @@ function MenuBar({ token, missing, gaps, view, viewer, canUnlock, snap }) {
   const [open, setOpen] = useState(null);
   const [msg, setMsg] = useState(null);
   const msgTimer = useRef(null);
+  const [tick, setTick] = useState(0);
+
+  // Il contatore che sale è quello che distingue "ci sta lavorando" da
+  // "è piantato": una rotellina che gira da sola dice la stessa cosa in
+  // entrambi i casi.
+  useEffect(() => {
+    if (!msg || msg.state === "done") return undefined;
+    const t = window.setInterval(() => setTick((n) => n + 1), 1000);
+    return () => window.clearInterval(t);
+  }, [msg]);
   const [ask, setAsk] = useState(null);
   const [help, setHelp] = useState(null);
 
@@ -1221,10 +1239,16 @@ function MenuBar({ token, missing, gaps, view, viewer, canUnlock, snap }) {
     stop();
     const what = label || "the workbooks";
     const href = url(scope, extra);
-    setMsg({ state: "working", what });
+    setMsg({ state: "working", what, at: Date.now() });
+
+    // Un limite ci vuole. Senza, se la richiesta non torna — Analytics in coda,
+    // la funzione che scade, la rete che cade senza dirlo — la scritta "sto
+    // preparando" resta accesa per sempre, che è peggio di non averla affatto.
+    const ac = new AbortController();
+    const cut = window.setTimeout(() => ac.abort(), WAIT_MAX);
 
     try {
-      const r = await fetch(href);
+      const r = await fetch(href, { signal: ac.signal });
       if (!r.ok) {
         const j = await r.json().catch(() => ({}));
         throw new Error(j.error || "the server answered " + r.status);
@@ -1241,11 +1265,17 @@ function MenuBar({ token, missing, gaps, view, viewer, canUnlock, snap }) {
       setMsg({ state: "done", what, name, size: blob.size });
       msgTimer.current = window.setTimeout(() => setMsg(null), 20000);
     } catch (e) {
-      // Il file può essere troppo grande per tenerlo in memoria: il link lo
-      // prende comunque, ma da lì in poi la fine non è più osservabile.
-      setMsg({ state: "fallback", what, why: e.message });
+      // Il file può essere troppo grande per tenerlo in memoria, o il server
+      // può metterci più del limite: il link lo prende comunque, ma da lì in
+      // poi la fine non è più osservabile.
+      const why = e.name === "AbortError"
+        ? "it went past " + Math.round(WAIT_MAX / 1000) + "s"
+        : e.message;
+      setMsg({ state: "fallback", what, why, at: Date.now() });
       viaLink(href);
       msgTimer.current = window.setTimeout(() => setMsg(null), 120000);
+    } finally {
+      window.clearTimeout(cut);
     }
   };
 
@@ -1355,6 +1385,16 @@ function MenuBar({ token, missing, gaps, view, viewer, canUnlock, snap }) {
           </>
         ))}
 
+        {msg && (
+          <span className={"mb-work " + msg.state} data-tick={tick}
+                role="status" aria-live="polite">
+            {msg.state === "done"
+              ? <><i className="tick" aria-hidden="true">✓</i> Downloaded {msg.name}</>
+              : <><i className="spin" aria-hidden="true" /> Preparing {msg.what}…{" "}
+                  <b className="el">{mmss(Date.now() - msg.at)}</b></>}
+          </span>
+        )}
+
         <span className="mb-spacer" />
         <span className="mb-stamp">
           {snap.source === "live" ? "Zoho live" : "snapshot"} · {fmtStamp(snap.generated_at)}
@@ -1372,8 +1412,9 @@ function MenuBar({ token, missing, gaps, view, viewer, canUnlock, snap }) {
             : <i className="spin" aria-hidden="true" />}
           <span>
             {msg.state === "working" && (
-              <><b>Preparing {msg.what}…</b> It is built on the server — a full zip takes a minute
-                or two. The download starts by itself when it is ready.</>
+              <><b>Preparing {msg.what}… {mmss(Date.now() - msg.at)}</b> It is built on the server —
+                a full zip takes a minute or two. If it goes past {Math.round(WAIT_MAX / 1000)}s the
+                browser takes over and finishes it by itself.</>
             )}
             {msg.state === "done" && (
               <><b>Downloaded {msg.name}</b> — {fmtSize(msg.size)}. Look in your Downloads folder.</>
