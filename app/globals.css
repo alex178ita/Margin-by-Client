@@ -598,3 +598,24 @@ th.ifix, td.ifix { background: color-mix(in srgb, #7a5ea8 6%, transparent); colo
 .det li.ifix span:first-child { color: #7a5ea8; }
 .det .tag.ifix { color: #7a5ea8; border-color: currentColor; }
 .det .tag.m .alt { color: inherit; opacity: 0.75; }
+
+/* L'avviso che le ore arrivano da due sistemi. Sta in testa alla pagina e non
+   si chiude: non è una notifica, è una premessa alla lettura di ogni numero
+   sotto. Il tono è informativo, non allarmato — non c'è niente da riparare. */
+.punion {
+  margin-top: 8px;
+  max-width: 78ch;
+  padding: 8px 11px;
+  border-left: 3px solid #4a90a4;
+  background: #eef6f9;
+  border-radius: 0 4px 4px 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #33525c;
+}
+.punion strong { color: #1f3d47; }
+
+/* Il selettore fra le due viste. Sta sopra i controlli perché cambia cosa si
+   sta guardando, non come lo si filtra: le due cose non vanno mescolate. */
+.views { margin: 14px 0 4px; }
+.views button { font-weight: 600; }

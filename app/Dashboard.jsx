@@ -5,7 +5,8 @@ import { LOGO_DATA_URI } from "../lib/logo";
 
 // Marcatore di build. Serve a una cosa sola: guardare la pagina e sapere quale
 // versione sta girando davvero, senza doverlo dedurre dal comportamento.
-const BUILD = "24/09 links";
+const BUILD = "people-union · 27/09/2026";
+const VERSION = "0.2";
 
 // Oltre questo, la richiesta si interrompe e il file passa dal link diretto.
 const WAIT_MAX = 180000;
@@ -20,6 +21,7 @@ const PROJECT = (id) => `https://projects.zoho.eu/portal/kleecksprojects#dashboa
 
 // Formattazione en-GB, coerente con gli altri report Kleecks.
 const eur = (n) => (n == null ? "—" : "€" + Math.round(n).toLocaleString("en-GB"));
+const fmtH = (n) => (n == null ? "—" : Math.round(n).toLocaleString("en-GB"));
 const eurK = (n) =>
   n == null ? "—" : Math.abs(n) >= 1000
     ? "€" + Math.round(n / 1000).toLocaleString("en-GB") + "k"
@@ -369,6 +371,13 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
   const [noExecus, setNoExecus] = useState(false);
   const [q, setQ] = useState("");
   const [sort, setSort] = useState({ key: "rev", dir: "desc" });
+  // Quale delle due viste è a schermo. I progetti interni non hanno un margine
+  // e non possono stare nella stessa tabella dei clienti: mettere una riga senza
+  // ricavo accanto a righe che ne hanno uno inviterebbe a leggere una perdita
+  // dove c'è solo costo previsto.
+  const [view, setView] = useState("clients");
+  const [iq, setIq] = useState("");
+  const [isort, setIsort] = useState({ key: "hours", dir: "desc" });
   const [open, setOpen] = useState(null);
 
   const hasCost = snap.cost_status === "ok";
@@ -378,6 +387,72 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
   // Ogni riga porta due margini: quello di sempre e quello dell'anno scelto.
   // "All" è da sempre; un anno è la quota di ricavo di competenza di quell'anno
   // contro le ore lavorate in quell'anno, anche su progetti nati prima.
+  /**
+   * Quanto del costo di ogni cliente è gestione invece che delivery.
+   *
+   * I progetti che iniziano per "_" sono lavoro sull'account che nessuno
+   * fattura: roadmap, coordinamento, richieste di modifica. Contano nel margine
+   * del cliente, ed è giusto — è il costo di servirlo. Ma senza questa colonna
+   * un margine basso non dice se abbiamo venduto male o se abbiamo regalato
+   * molto, e sono due problemi con due rimedi diversi.
+   */
+  const mgmtByClient = useMemo(() => {
+    const m = {};
+    for (const p of snap.projects || []) {
+      if (p.k !== "client_mgmt" || !p.c) continue;
+      const cost = year === "all" ? (p.cost || 0)
+        : (p.cy && p.cy[year] ? p.cy[year].cost : 0);
+      const hours = year === "all" ? (p.hours || 0)
+        : (p.cy && p.cy[year] ? p.cy[year].hours : 0);
+      const e = m[p.c] || (m[p.c] = { cost: 0, hours: 0, n: 0 });
+      e.cost += cost || 0; e.hours += hours || 0; e.n += 1;
+    }
+    return m;
+  }, [snap, year]);
+
+  /**
+   * I progetti che non hanno un cliente: lavoro interno e prevendite.
+   *
+   * Qui non c'è margine e non ce ne sarà: non esiste un ricavo da mettere di
+   * fronte a queste ore. C'è quanto costano, che è una domanda legittima e
+   * finora non aveva una risposta a schermo. Gli archiviati restano dentro —
+   * sono ore lavorate come le altre, e toglierle dal conto solo perché il
+   * progetto è chiuso falserebbe ogni confronto fra un anno e il precedente.
+   */
+  const internalRows = useMemo(() => {
+    const query = iq.trim().toLowerCase();
+    const out = (snap.projects || [])
+      .filter((p) => p.k === "internal" || p.k === "presale")
+      .map((p) => {
+        const cy = p.cy && p.cy[year];
+        const hours = year === "all" ? (p.hours || 0) : (cy ? cy.hours || 0 : 0);
+        const cost = year === "all" ? (p.cost || 0) : (cy ? cy.cost || 0 : 0);
+        const ih = year === "all" ? (p.ih || 0) : (cy ? cy.ih || 0 : 0);
+        return { ...p, h: hours, cst: cost, ifix: ih };
+      })
+      .filter((p) => p.h > 0 || p.ifix > 0)
+      .filter((p) => !query || (p.n || "").toLowerCase().includes(query));
+
+    const val = (r) =>
+      isort.key === "name" ? (r.n || "").toLowerCase()
+      : isort.key === "kind" ? r.k
+      : isort.key === "cost" ? r.cst
+      : isort.key === "ifix" ? r.ifix
+      : r.h;
+    out.sort((a, b) => {
+      const x = val(a), y2 = val(b);
+      const c = typeof x === "string" ? x.localeCompare(y2) : x - y2;
+      return isort.dir === "asc" ? c : -c;
+    });
+    return out;
+  }, [snap, year, iq, isort]);
+
+  const iTot = useMemo(() => ({
+    hours: internalRows.reduce((s2, r) => s2 + r.h, 0),
+    cost: internalRows.reduce((s2, r) => s2 + r.cst, 0),
+    ifix: internalRows.reduce((s2, r) => s2 + r.ifix, 0),
+  }), [internalRows]);
+
   const rows = useMemo(() => {
     const query = q.trim().toLowerCase();
     const out = snap.clients
@@ -417,6 +492,10 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
           marginAmt: c.cost == null || !c.amt ? null : c.amt - c.cost,
           marginPctAmt: c.cost == null || !c.amt ? null : (c.amt - c.cost) / c.amt,
           icost, ihours,
+          mgmtCost: (mgmtByClient[c.c] || {}).cost || 0,
+          mgmtHours: (mgmtByClient[c.c] || {}).hours || 0,
+          // Che fetta del costo di questo cliente è lavoro non venduto.
+          mgmtShare: cost ? ((mgmtByClient[c.c] || {}).cost || 0) / cost : null,
           // Le stesse due percentuali con dentro anche il debug interno.
           marginPctIn: cost == null || rev === 0 || !icost ? null : (rev - cost - icost) / rev,
           marginPctAmtIn: c.cost == null || !c.amt || !c.icost
@@ -440,6 +519,7 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
       : key === "pctall" ? (r.marginPctAll == null ? -Infinity : r.marginPctAll)
       : key === "hrs" ? (r.hours == null ? -Infinity : r.hours)
       : key === "ifix" ? (r.ihours || 0)
+      : key === "mgmt" ? (r.mgmtCost || 0)
       : key === "ltv" ? (r.ltv == null ? -Infinity : r.ltv)
       : key === "amt" ? (r.amt == null ? -Infinity : r.amt)
       : key === "pctamt" ? (r.marginPctAmt == null ? -Infinity : r.marginPctAmt)
@@ -452,7 +532,7 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
       return sort.dir === "asc" ? c : -c;
     });
     return out;
-  }, [snap, year, noExecus, q, sort, hasCost, costPerYear, accrual, viewer]);
+  }, [snap, year, noExecus, q, sort, hasCost, costPerYear, accrual, viewer, mgmtByClient]);
 
   const tot = useMemo(() => {
     const revenue = rows.reduce((s, r) => s + r.rev, 0);
@@ -475,6 +555,25 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
   const wTot = rows.reduce((s, r) => s + r.rev, 0);
   const top5 = rows.slice().sort((a, b) => b.rev - a.rev).slice(0, 5);
   const top5Share = wTot ? top5.reduce((s, r) => s + r.rev, 0) / wTot : 0;
+
+  // Stessa intestazione ordinabile della tabella clienti, con il suo stato:
+  // due tabelle che si ordinano in modo diverso sarebbero due tabelle da
+  // imparare invece di una.
+  const ith = (key, label, right) => (
+    <th
+      className={(right ? "r" : "") + (isort.key === key ? " sorted" : "")}
+      title={"Sort by " + label.toLowerCase()}
+      scope="col"
+      aria-sort={isort.key === key ? (isort.dir === "asc" ? "ascending" : "descending") : undefined}
+      onClick={() =>
+        setIsort((s2) => ({ key, dir: s2.key === key && s2.dir === "desc" ? "asc" : "desc" }))}
+    >
+      {label}
+      <span className="arw" aria-hidden="true">
+        {isort.key === key ? (isort.dir === "asc" ? "▲" : "▼") : "↕"}
+      </span>
+    </th>
+  );
 
   const th = (key, label, right, tint) => (
     <th
@@ -502,9 +601,28 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
             <img className="logo" src={LOGO_DATA_URI} alt="Kleecks" />
             <h1>Margin by Clients <span className="qual">(before infrastructure costs)</span></h1>
             <div className="beta">
-              v.0.1 — Beta for testing · build {BUILD}
+              v.{VERSION} — Beta for testing · build {BUILD}
               {viewer && <span className="viewbadge">summary view</span>}
             </div>
+            {/*
+              Le ore non vengono più da una sola fonte, e questo va detto sulla
+              pagina, non in un endpoint: chi confronta questi numeri con un
+              report di Zoho Projects trova di meno e deve sapere perché, o
+              penserà che uno dei due sia rotto.
+            */}
+            {snap.people_union && snap.people_union.hours > 0 && (
+              <div className="punion">
+                <strong>Hours include Zoho People.</strong>{" "}
+                {fmtH(snap.people_union.hours)} h were logged in Zoho People and never reached
+                Zoho Projects, and they are counted here.{" "}
+                Any report you run inside Zoho Projects will therefore show the same hours or fewer,
+                never more — that is expected, not an error.
+                {snap.people_union.unrated > 0 && (
+                  <> {fmtH(snap.people_union.unrated)} h of them have no hourly cost on record and
+                  are priced at zero.</>
+                )}
+              </div>
+            )}
             {snap.rate_years && (
               <ul className="rateyears">
                 {Object.entries(snap.rate_years).map(([y, c]) => (
@@ -609,6 +727,15 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                  gaps={snap.cost_gaps || null}
                  view={{ year, q, noExecus }} />
 
+        <div className="seg views" role="group" aria-label="View">
+          <button aria-pressed={view === "clients"} onClick={() => setView("clients")}>
+            Clients
+          </button>
+          <button aria-pressed={view === "internal"} onClick={() => setView("internal")}>
+            Internal &amp; pre-sales
+          </button>
+        </div>
+
         <div className="controls">
           <div className="seg" role="group" aria-label="Year">
             <button aria-pressed={year === "all"} onClick={() => setYear("all")}>All</button>
@@ -625,6 +752,8 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                  placeholder="Search client, partner or legal entity…" aria-label="Search" />
         </div>
 
+        {view === "clients" && (
+        <>
         <p className="basis">
           {year === "all" ? (
             <>
@@ -733,6 +862,9 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                 {th("amt", "Contract value", true, "crm")}
                 {th("pctamt", "Margin % on contract", true, "crm")}
                 {!viewer && th("cost", year === "all" ? "Real cost" : "Real cost " + year, true)}
+                {/* Di quel costo, quanto è gestione non venduta. Sta attaccata
+                    al costo perché è una sua scomposizione, non un dato a sé. */}
+                {!viewer && th("mgmt", "of which management", true)}
                 {viewer && th("hrs", "Hours", true)}
                 {th("margin", year === "all" ? "Margin" : "Margin " + year, true)}
                 {/* Con "All" selezionato i due margini coincidono: la seconda
@@ -838,6 +970,20 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                     {!viewer && (
                       <td className="r num">{r.cost == null ? <span className="na">—</span> : eur(r.cost)}</td>
                     )}
+                    {!viewer && (
+                      <td className="r num dim"
+                          title={r.mgmtCost
+                            ? Math.round(r.mgmtHours).toLocaleString("en-GB") +
+                              " hours on this client's management projects (the ones whose name starts " +
+                              "with \"_\"): work on the account that nobody invoices. It counts in the " +
+                              "cost above because it is the cost of serving this client."
+                            : "no management project on this client"}>
+                        {r.mgmtCost
+                          ? <>{eur(r.mgmtCost)}
+                              {r.mgmtShare != null && <i className="alt"> ({pct(r.mgmtShare)})</i>}</>
+                          : "—"}
+                      </td>
+                    )}
                     {viewer && (
                       <td className="r num">
                         {r.hours == null ? <span className="na">—</span>
@@ -871,7 +1017,10 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                   </tr>,
                   isOpen && (
                     <tr key={r.c + "-d"} className="detail">
-                      <td colSpan={year === "all" ? 12 : 13}>
+                      {/* La riga di dettaglio deve coprire tutte le colonne, e
+                          "of which management" ne aggiunge una, ma solo per chi
+                          vede i costi: con la vista ridotta la colonna non c'è. */}
+                      <td colSpan={(year === "all" ? 12 : 13) + (viewer ? 0 : 1)}>
                         <div className="det">
                           <div>
                             <h4>Client</h4>
@@ -1128,8 +1277,104 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
             </tbody>
           </table>
         </div>
+        </>
+        )}
 
-        {rows.some((r) => r.amt_early > 0) && (
+        {view === "internal" && (
+        <>
+          <div className="kpis">
+            <div className="kpi">
+              <div className="k">Hours logged</div>
+              <div className="v num">{Math.round(iTot.hours).toLocaleString("en-GB")}</div>
+              <div className="s">
+                {internalRows.length} projects · {year === "all" ? "whole period" : year}
+              </div>
+            </div>
+            {!viewer && (
+              <div className="kpi">
+                <div className="k">Real team cost</div>
+                <div className="v num">{eur(iTot.cost)}</div>
+                <div className="s">
+                  {iTot.hours ? "€" + (iTot.cost / iTot.hours).toFixed(0) + "/h blended" : "—"}
+                </div>
+              </div>
+            )}
+            <div className="kpi">
+              <div className="k">No margin here</div>
+              <div className="v num" style={{ fontSize: "17px", lineHeight: 1.35 }}>
+                by design
+              </div>
+              <div className="s">nothing was sold against these hours</div>
+            </div>
+          </div>
+
+          <p className="basis">
+            <b>Internal work and pre-sales.</b> Projects with no client behind them: internal
+            operations, development, admin, and the pre-sales effort spent before a deal exists.
+            There is no revenue to put against these hours, so there is no margin — only what they
+            cost. Archived projects are included: the hours were worked, and dropping them because
+            the project has since been closed would break every year-on-year comparison.
+          </p>
+
+          <div className="controls">
+            <input className="search" type="search" placeholder="Filter projects…"
+                   value={iq} onChange={(e) => setIq(e.target.value)}
+                   aria-label="Filter internal projects" />
+          </div>
+
+          <div className="tablewrap">
+            <table>
+              <thead>
+                <tr>
+                  {ith("name", "Project")}
+                  {ith("kind", "Kind")}
+                  {ith("hours", "Hours", true)}
+                  {!viewer && ith("cost", "Real cost", true)}
+                  {ith("ifix", "Internal fix h", true)}
+                </tr>
+              </thead>
+              <tbody>
+                {internalRows.map((p) => (
+                  <tr key={p.id}>
+                    <td>
+                      <div className="cli">
+                        <a href={xlsx("project", p.id)} className="clidl"
+                           title="Download who logged these hours and when"
+                           onClick={(e) => grabLink(e, xlsx("project", p.id), p.n)}>{p.n}</a>
+                      </div>
+                      {p.s && <div className="via">{p.s}</div>}
+                    </td>
+                    <td>
+                      <i className={"tag " + (p.k === "presale" ? "warn" : "mod")}>
+                        {p.k === "presale" ? "pre-sales" : "internal"}
+                      </i>
+                    </td>
+                    <td className="r num">{Math.round(p.h).toLocaleString("en-GB")}</td>
+                    {!viewer && <td className="r num">{eur(p.cst)}</td>}
+                    <td className="r num ifix">
+                      {p.ifix ? Math.round(p.ifix).toLocaleString("en-GB") : "—"}
+                    </td>
+                  </tr>
+                ))}
+                {!internalRows.length && (
+                  <tr>
+                    <td colSpan={viewer ? 4 : 5} className="na">
+                      No internal project has hours in this period.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <p className="tablenote">
+            Click a project name to download who logged the hours and when. The file carries no
+            margin and no revenue, because neither exists here.
+          </p>
+        </>
+        )}
+
+        {view === "clients" && rows.some((r) => r.amt_early > 0) && (
           <p className="tablenote">
             <i className="part">*</i> Part of this client&apos;s delivery cost falls before{" "}
             {snap.min_year || "2025"}, where this dashboard does not count hours: some of their deals
