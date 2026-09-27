@@ -9,7 +9,11 @@ export const maxDuration = 300;
  *
  *   /api/billing-fix?k=<token>                 prova: dice cosa cambierebbe
  *   /api/billing-fix?k=<token>&apply=1         esegue, a lotti
- *   /api/billing-fix?k=<token>&apply=1&limit=800&from=2025&to=2026
+ * /api/billing-fix?k=<token>&apply=1&offset=100   lotto successivo (max 90 per volta)
+ *
+ * L'offset non è un dettaglio: Analytics si aggiorna ogni due o tre ore, quindi
+ * i log appena scritti continuano a comparire nell'elenco. Ripetere la stessa
+ * chiamata senza avanzare riscriverebbe sempre i primi, all'infinito.
  *
  * Senza apply non tocca niente: è la modalità predefinita apposta, perché il
  * contrario — eseguire per difetto e provare su richiesta — è il modo in cui si
@@ -30,6 +34,7 @@ export async function GET(request) {
     const out = await applyBillingFix({
       apply,
       limit: url.searchParams.get("limit"),
+      offset: url.searchParams.get("offset"),
       from: url.searchParams.get("from"),
       to: url.searchParams.get("to"),
       seconds: 200,
