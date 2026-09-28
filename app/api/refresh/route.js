@@ -1,5 +1,6 @@
 import { revalidatePath } from "next/cache";
 import { buildSnapshot } from "../../../lib/zoho";
+import * as store from "../../../lib/store";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -31,6 +32,10 @@ export async function GET(request) {
       revenue: snap.totals.revenue,
       cost: snap.totals.cost,
       cost_status: snap.cost_status,
+      // Se la scrittura non è andata, va detto: un "ok" che non ha scritto
+      // niente fa credere che il problema sia altrove per giorni.
+      stored: snap.cost_status === "ok" ? (store.storeReady() ? "written" : "no blob store configured")
+                                        : "not written — cost was pending",
       cost_by_year: snap.cost_by_year,
       accrual: snap.accrual,
       unmatched: snap.unmatched.length,

@@ -63,15 +63,31 @@ const GLOSS = {
  * che c'è qualcosa da leggere, e su uno schermo pieno di numeri nessuno va a
  * caccia di testo nascosto. La "i" si vede, e dice che una spiegazione esiste.
  */
-const Gl = ({ t, children }) => (
-  <span className="cpl">
-    {children}
-    <i className="ib" title={t} tabIndex={0} role="img" aria-label={t}>i</i>
-  </span>
-);
+function Gl({ t, children }) {
+  const [on, setOn] = useState(false);
+  return (
+    <span className="cpl gll">
+      {children}
+      {/* Dentro il Web Tab del CRM la pagina sta in un iframe e il tooltip del
+          browser non compariva: la "i" si vedeva e non faceva niente, che è
+          peggio di non averla. Ora apre una bolla al clic — che funziona anche
+          su un touch, dove un tooltip non esiste proprio. */}
+      <button type="button" className="ib" title={t} aria-expanded={on}
+              onClick={(e) => { e.stopPropagation(); setOn((v) => !v); }}>
+        i
+      </button>
+      {on && (
+        <span className="ibp" role="tooltip" onClick={(e) => e.stopPropagation()}>
+          {t}
+          <button type="button" className="ibx" onClick={() => setOn(false)}>Close</button>
+        </span>
+      )}
+    </span>
+  );
+}
 
-const BUILD = "budget order + reload · 28/09/2026";
-const VERSION = "0.5.1";
+const BUILD = "saved snapshot + deal type · 28/09/2026";
+const VERSION = "0.6";
 
 // Oltre questo, la richiesta si interrompe e il file passa dal link diretto.
 const WAIT_MAX = 180000;
@@ -496,6 +512,10 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
     dl.start(href, label);
   };
   const accrual = snap.accrual && snap.accrual.status === "ok";
+  // Lo stesso indirizzo con "refresh=1": salta ogni cache e rilegge da Zoho.
+  const rehref = "?" + new URLSearchParams(
+    Object.entries({ k: token || undefined, refresh: "1" }).filter(([, v]) => v)
+  ).toString();
 
   const viewer = role === "viewer";
 
@@ -827,6 +847,16 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                         from every figure on the page. Zoho said: {snap.people_union.error}
                       </p>
                     )}
+                    {snap.people_union.stale && (
+                      <p className="err">
+                        Zoho People did not answer in time on this refresh, so these hours are the
+                        ones read at{" "}
+                        {new Date(snap.people_union.stale).toLocaleString("en-GB")}. They are still
+                        counted in every figure on the page — the work was done either way, and the
+                        total moves very little from one hour to the next. Zoho said:{" "}
+                        {snap.people_union.stale_reason}
+                      </p>
+                    )}
                     <p>
                       <b>{fmtH(snap.people_union.hours)} hours</b> were logged in Zoho People and
                       never reached Zoho Projects. Zoho People pushes approved time logs across once
@@ -870,9 +900,23 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
             <div>Updated<br /><b>{fmtStamp(snap.generated_at)}</b></div>
             <div>
               Source<br />
-              <span className={"badge " + (snap.source === "live" ? "live" : "seed")}>
+              <span className={"badge " + (snap.source === "live" ? "live" : "seed")}
+                    title={snap.from_store
+                      ? "Served from the saved snapshot built at " +
+                        new Date(snap.from_store).toLocaleString("en-GB") +
+                        ". Zoho was not queried for this page load."
+                      : "Built from Zoho on this page load."}>
                 {snap.source === "live" ? "Zoho live" : "snapshot"}
               </span>
+              {/* Chi guarda deve poter sapere se sta leggendo un dato di
+                  stanotte, e poterne chiedere uno di adesso senza cercare come.
+                  Rileggere da Zoho costa un paio di minuti: si dice. */}
+              <a className="refnow" href={rehref} title="Read everything from Zoho again. It takes a minute or two.">
+                {snap.from_store
+                  ? "from " + new Date(snap.from_store).toLocaleTimeString("en-GB",
+                      { hour: "2-digit", minute: "2-digit" }) + " · refresh"
+                  : "refresh"}
+              </a>
             </div>
           </div>
         </div>
@@ -940,11 +984,15 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                   <button className="xb" onClick={() => {
                     try {
                       const u = new URL(window.location.href);
+                      // Non basta ricaricare: senza questo la richiesta può
+                      // tornare dalla cache dell'iframe, e soprattutto il
+                      // server riservirebbe lo stesso snapshot incompleto.
+                      u.searchParams.set("refresh", "1");
                       u.searchParams.set("r", String(Date.now()));
                       window.location.replace(u.toString());
                     } catch (e) { window.location.reload(); }
                   }}>
-                    Reload now
+                    Read from Zoho again
                   </button>
                 </p>
               )}
@@ -1387,7 +1435,30 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                            * vuole aprire il progetto. Il file resta, accanto,
                            * come freccia — piccola e riconoscibile.
                            */
-                          const pname = (x) => (
+                          /**
+                           * Che cosa è stato venduto, scritto sul progetto.
+                           *
+                           * Il tipo sta nell'intestazione del deal, ma chi
+                           * scorre le righe guarda i progetti, e a quel punto
+                           * l'intestazione è già scorsa via. Una licenza e un
+                           * lavoro a progetto si leggono in modo diverso — la
+                           * prima ha un margine alto per costruzione — e
+                           * confonderli è l'errore più facile da fare qui.
+                           */
+                          const kindTag = (i) => {
+                            if (!i || !i.kind || i.kind === "unset") return null;
+                            const lic = i.kind === "licence";
+                            return (
+                              <i className={"cpt " + (lic ? "licence" : "svc")}
+                                 title={lic
+                                   ? "A licence deal: the CRM Licence field carries the value. Delivery effort on it is support and set-up, not the thing that was sold, so the margin reads high by its nature."
+                                   : "A professional services deal: the CRM Delivery field carries the value. What was sold is the work itself, so hours and margin move together."}>
+                                {lic ? "licence" : "professional services"}
+                              </i>
+                            );
+                          };
+
+                          const pname = (x, info) => (
                             <div className="cpn">
                               <span className="cpnm">
                                 <a href={PROJECT(x.id)} target="_blank" rel="noreferrer"
@@ -1398,6 +1469,7 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                                    onClick={(e) => grabLink(e, xlsx("project", x.id), x.n)}>↓</a>
                               </span>
                               <div className="cptags">
+                                {kindTag(info)}
                                 {x.s && <i className="cpt">{x.s}</i>}
                                 {x.arch && <i className="cpt arch" title="Archived in Zoho Projects. The hours still count: the work was done.">archived</i>}
                                 {badge(x)}
@@ -1405,12 +1477,24 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                             </div>
                           );
 
-                          const prow = (x) => {
+                          const head = (
+                            <div className="cphead">
+                              <span>Project</span>
+                              <span>Hours{year === "all" ? "" : " " + year}</span>
+                              <span>from People</span>
+                              <span>{viewer ? "—" : "Internal cost"}</span>
+                              <span>Budget h</span>
+                              <span>Δ h</span>
+                              <span />
+                            </div>
+                          );
+
+                          const prow = (x, info) => {
                             const h = H(x), k = K(x);
                             const d = x.bh ? Math.round((h - x.bh) * 10) / 10 : null;
                             return (
                               <div className="cprow" key={x.id}>
-                                {pname(x)}
+                                {pname(x, info)}
                                 <div className="cpnum">{Math.round(h).toLocaleString("en-GB")}</div>
                                 <div className="cpnum sub">
                                   {year === "all" && x.ph ? Math.round(x.ph).toLocaleString("en-GB") : "—"}
@@ -1498,15 +1582,7 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                                   <b className="num">{r.ihours ? Math.round(r.ihours).toLocaleString("en-GB") + " h" : "—"}</b></div>
                               </div>
 
-                              <div className="cphead">
-                                <span>Deal and the projects that deliver it</span>
-                                <span>Hours{year === "all" ? "" : " " + year}</span>
-                                <span>from People</span>
-                                <span>{viewer ? "—" : "Internal cost"}</span>
-                                <span>Budget h</span>
-                                <span>Δ h</span>
-                                <span />
-                              </div>
+              <p className="cpwhat">Deals, and the projects that deliver them</p>
 
                               {[...byDeal.values()].map((b) => {
                                 const i = b.info;
@@ -1537,7 +1613,6 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                                     <div className="cpdh">
                                       <div className="cpn">
                                         <a href={CRM_DEAL(b.id)} target="_blank" rel="noreferrer">{name}</a>
-                                        {facts(i)}
                                       </div>
                                       <div className="cpamt">
                                         <span className="cpl">Amount</span>
@@ -1556,8 +1631,10 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                                           </>
                                         )}
                                       </div>
+                                      {facts(i)}
                                     </div>
-                                    {b.ps.map(prow)}
+                                    {b.ps.length > 0 && head}
+                                    {b.ps.map((x) => prow(x, i))}
                                     {!b.ps.length && (
                                       <div className="cprow cpempty">
                                         <div className="cpn">
@@ -1593,7 +1670,8 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                                       )}
                                     </div>
                                   </div>
-                                  {mgmt.map(prow)}
+                                  {head}
+                                  {mgmt.map((x) => prow(x, null))}
                                 </div>
                               )}
 
@@ -1607,7 +1685,8 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                                       </div>
                                     </div>
                                   </div>
-                                  {noDeal.ps.filter(alive).map(prow)}
+                                  {head}
+                                  {noDeal.ps.filter(alive).map((x) => prow(x, null))}
                                 </div>
                               )}
 
@@ -2195,8 +2274,10 @@ function fmtSize(n) {
 
 function fmtDate(s) {
   if (!s) return "—";
-  const [y, m, d] = String(s).split("-");
-  return `${d}/${m}/${y}`;
+  // Le date di licenza arrivano dal CRM come timestamp completo, non come
+  // giorno: spezzarle sui trattini produceva "18T17:00:00+02:00/06/2026".
+  const [y, m, d] = String(s).slice(0, 10).split("-");
+  return d && m && y ? `${d}/${m}/${y}` : String(s);
 }
 function fmtStamp(s) {
   if (!s) return "—";

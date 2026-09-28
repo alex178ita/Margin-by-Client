@@ -645,6 +645,13 @@ th.ifix, td.ifix { background: color-mix(in srgb, #7a5ea8 6%, transparent); colo
 
 /* Il selettore fra le due viste. Sta sopra i controlli perché cambia cosa si
    sta guardando, non come lo si filtra: le due cose non vanno mescolate. */
+.refnow {
+  display: inline-block; margin-top: 4px; font-size: 10.5px; font-weight: 600;
+  color: #b8ccd4; text-decoration: underline dotted rgba(184,204,212,.6);
+  text-underline-offset: 3px;
+}
+.refnow:hover { color: #fff; }
+
 .views { margin: 14px 0 4px; }
 .views button { font-weight: 600; }
 
@@ -690,24 +697,42 @@ th.has-gl { cursor: help; }
    è un iframe stretto — per leggere un costo bisognava scorrere a destra. Ora
    il nome ha un massimo e l'avanzo va in fondo, dove non serve a nessuno ma
    almeno non separa le cose che vanno lette insieme. */
+/* La striscia delle intestazioni sta dentro il blocco, sopra le righe che
+   descrive, e non più una volta sola in cima al pannello. In cima finiva sopra
+   l'intestazione del deal, che porta Amount e margine — quantità diverse nelle
+   stesse colonne: si leggeva "HOURS 2026" e sotto un importo in euro. */
 .cphead {
   display: grid;
   grid-template-columns: minmax(220px, 440px) 84px 84px 104px 80px 70px minmax(0, 1fr);
-  gap: 10px; padding: 0 14px 6px;
+  gap: 10px; padding: 7px 14px 5px 30px;
+  border-top: 1px solid #eef2f4; background: #fbfcfd;
+  font-size: 9px; letter-spacing: .09em; text-transform: uppercase;
+  color: #7c8d95; font-weight: 600;
+}
+.cphead span + span { text-align: right; }
+.cpwhat {
+  margin: 0 0 7px; padding: 0 2px;
   font-size: 9.5px; letter-spacing: .09em; text-transform: uppercase;
   color: #5a6b74; font-weight: 600;
 }
-.cphead span + span { text-align: right; }
 
 .cpdeal {
   background: #fff; border: 1px solid #e3e9ec; border-radius: 6px;
   margin-bottom: 7px; overflow: hidden;
 }
+/* L'intestazione del deal usa la stessa griglia delle righe: l'importo finisce
+   dove finisce "Internal cost", il margine dove finisce "Δ h". Prima aveva una
+   griglia sua e i due blocchi si sfalsavano di una cinquantina di pixel. */
 .cpdh {
-  display: grid; grid-template-columns: minmax(220px, 440px) 120px 190px minmax(0, 1fr);
-  gap: 10px; align-items: start; padding: 9px 14px;
+  display: grid;
+  grid-template-columns: minmax(220px, 440px) 84px 84px 104px 80px 70px minmax(0, 1fr);
+  gap: 4px 10px; align-items: end; padding: 10px 14px;
   border-left: 3px solid #0f7173; background: #fcfdfd;
 }
+.cpdh > .cpn { grid-column: 1; align-self: center; }
+.cpdh > .cpamt { grid-column: 2 / 4; }
+.cpdh > .cpmar { grid-column: 4 / 7; }
+.cpdh > .cpfacts { grid-column: 1 / -1; }
 .mgmtblk .cpdh { border-left-color: #c79a3e; background: #fefbf4; }
 .cpamt, .cpmar { text-align: right; }
 .cpamt .cpl, .cpmar .cpl { margin-bottom: 1px; }
@@ -723,6 +748,10 @@ th.has-gl { cursor: help; }
 .cpt.arch { background: #eae4f2; color: #58427a; }
 .cpt.warn { background: #fbf0d9; color: #8a6410; }
 .cpt.mg { background: #faefdd; color: #8a5a18; }
+/* Licenza e professional services: due modi diversi di guadagnare, e su una
+   riga di progetto è l'informazione che cambia come si legge il margine. */
+.cpt.licence { background: #e2edf7; color: #2c5583; }
+.cpt.svc { background: #ece7f6; color: #54408a; }
 .cpb {
   font-style: normal; font-size: 10px; font-weight: 600; padding: 1px 6px;
   border-radius: 3px; white-space: nowrap; cursor: help;
@@ -762,7 +791,23 @@ th.has-gl { cursor: help; }
   font: italic 700 9px/1 Georgia, serif; text-transform: none; letter-spacing: 0;
   cursor: help;
 }
+.ib { border: 0; padding: 0; font-family: Georgia, serif; }
 .ib:hover, .ib:focus-visible { background: #0f7173; color: #fff; outline: none; }
+.gll { position: relative; }
+.ibp {
+  position: absolute; z-index: 60; top: 20px; left: 0;
+  width: min(380px, calc(100vw - 60px));
+  background: #fff; color: #33525c; text-transform: none; letter-spacing: 0;
+  border: 1px solid #d8e2e6; border-radius: 6px; padding: 11px 13px 9px;
+  box-shadow: 0 10px 28px rgba(13, 27, 42, .2);
+  font-size: 12px; font-weight: 400; line-height: 1.5; text-align: left;
+  display: block; white-space: normal;
+}
+.ibx {
+  display: block; margin-top: 7px; background: none; border: 0; padding: 0;
+  cursor: pointer; font: inherit; font-size: 11px; font-weight: 600; color: #0f7173;
+}
+.ibx:hover { text-decoration: underline; }
 
 /* Nome del progetto e, accanto, la freccia che scarica il dettaglio. Il nome
    porta al progetto: è quello che uno si aspetta cliccandolo. */
@@ -776,7 +821,7 @@ th.has-gl { cursor: help; }
 
 /* I fatti del deal: cosa è stato venduto, chi lo segue, per quanto vale.
    Una riga sola che va a capo, non una colonna di etichette. */
-.cpfacts { margin-top: 4px; display: flex; flex-wrap: wrap; gap: 3px 16px; font-size: 11.5px; color: #3f5058; }
+.cpfacts { margin-top: 7px; padding-top: 7px; border-top: 1px solid #eef2f4; display: flex; flex-wrap: wrap; gap: 3px 16px; font-size: 11.5px; color: #3f5058; }
 .cpfacts span { white-space: nowrap; }
 .cpfacts i {
   font-style: normal; font-size: 9.5px; letter-spacing: .07em; text-transform: uppercase;
@@ -788,6 +833,10 @@ th.has-gl { cursor: help; }
 @media (max-width: 1100px) {
   .cpctx { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .cphead { display: none; }
-  .cprow, .cpdh { grid-template-columns: minmax(0, 1fr) 90px; }
-  .cprow > div:nth-child(n+4), .cpdh > div:nth-child(3) { display: none; }
+  .cprow { grid-template-columns: minmax(0, 1fr) 90px 110px; }
+  .cprow > div:nth-child(n+3):not(:nth-child(4)) { display: none; }
+  .cpdh { grid-template-columns: minmax(0, 1fr) 110px 120px; }
+  .cpdh > .cpn { grid-column: 1; }
+  .cpdh > .cpamt { grid-column: 2; }
+  .cpdh > .cpmar { grid-column: 3; }
 }

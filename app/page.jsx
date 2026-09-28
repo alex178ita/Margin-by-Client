@@ -34,7 +34,11 @@ export default async function Page({ searchParams }) {
 
   if (process.env.ZOHO_REFRESH_TOKEN) {
     try {
-      snap = await buildSnapshot();
+      // "refresh" nell'indirizzo salta sia la cache in memoria sia quella
+      // scritta e rilegge da Zoho: è quello che fa il pulsante di ricarica
+      // quando i costi non sono arrivati, ed è l'unico modo per avere un dato
+      // di adesso invece di uno di stanotte.
+      snap = await buildSnapshot({ force: searchParams?.refresh === "1" });
     } catch (e) {
       warning = "Zoho could not be reached, so there is nothing to show.\n" + e.message +
         "\nFor the raw answer from Analytics on its own, open /api/costdebug?k=<token>.";
