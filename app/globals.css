@@ -368,8 +368,9 @@ button.xb:disabled { opacity: .55; cursor: default; }
 .xb-x:hover { color: var(--ink); }
 
 /* Nome cliente e valori cliccabili: aprono il foglio di dettaglio. */
-.clidl, a.xl { color: inherit; text-decoration: none; border-bottom: 1px dotted var(--ink-3); }
-.clidl:hover, a.xl:hover { color: var(--teal); border-bottom-color: var(--teal); }
+.clidl, a.xl, .cli > a:first-child { color: inherit; text-decoration: none; border-bottom: 1px dotted var(--ink-3); }
+.clidl:hover, a.xl:hover, .cli > a:first-child:hover { color: var(--teal); border-bottom-color: var(--teal); }
+.cli > .cpdl { border-bottom: 0; }
 
 .det .wide { grid-column: span 2; }
 /* La colonna dei valori nelle liste deal e progetti porta due numeri —
@@ -604,20 +605,24 @@ th.ifix, td.ifix { background: color-mix(in srgb, #7a5ea8 6%, transparent); colo
    volta e poi occupa spazio per sempre, sopra i numeri che uno è venuto a
    vedere. Ora è una riga sola sullo sfondo scuro dell'intestazione, con il
    cerchietto bianco che apre il testo a chi lo vuole. */
-.pnote { position: relative; margin-top: 6px; }
+.pnote { position: relative; margin-top: 8px; }
+/* Prima era testo grigio piccolo sotto il numero di versione, e nessuno lo
+   trovava: su uno sfondo scuro pieno di righe di servizio una riga in più non
+   si distingue da quelle che la circondano. Ora è una pastiglia con il suo
+   bordo — si vede che è una cosa su cui si clicca. */
 .pnote-i {
-  display: inline-flex; align-items: center; gap: 7px;
-  background: none; border: 0; padding: 0; cursor: pointer;
-  font: inherit; color: #b8ccd4; letter-spacing: .01em;
+  display: inline-flex; align-items: center; gap: 8px;
+  background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.28);
+  border-radius: 999px; padding: 4px 12px 4px 5px; cursor: pointer;
+  font: inherit; color: #dbe7ec; letter-spacing: .01em;
 }
 .pnote-i > span:first-child {
-  width: 15px; height: 15px; border-radius: 50%; flex: 0 0 15px;
+  width: 17px; height: 17px; border-radius: 50%; flex: 0 0 17px;
   background: #ffffff; color: #0d1b2a;
-  font: italic 700 10px/15px Georgia, serif; text-align: center;
+  font: italic 700 11px/17px Georgia, serif; text-align: center;
 }
-.pnote-lbl { font-size: 11.5px; text-decoration: underline dotted rgba(184,204,212,.5); text-underline-offset: 3px; }
-.pnote-i:hover { color: #ffffff; }
-.pnote-i:hover .pnote-lbl { text-decoration-color: rgba(255,255,255,.7); }
+.pnote-lbl { font-size: 12px; font-weight: 600; }
+.pnote-i:hover { color: #ffffff; background: rgba(255,255,255,.16); border-color: rgba(255,255,255,.55); }
 .pnote-i:focus-visible { outline: 2px solid #ffffff; outline-offset: 3px; border-radius: 3px; }
 
 .pnote-pop {
@@ -679,8 +684,15 @@ th.has-gl { cursor: help; }
 .cpmg { background: #fbf0d9; margin: -6px -8px; padding: 6px 8px; border-radius: 4px; }
 .cpmg .cpl, .cpmg b { color: #8a6410; }
 
+/* Le colonne dei numeri stanno vicino al nome, non all'altro capo dello
+   schermo. Prima il nome era `1fr`: su un monitor largo si mangiava tutto lo
+   spazio e spingeva le cifre fuori dalla parte visibile dentro il Web Tab, che
+   è un iframe stretto — per leggere un costo bisognava scorrere a destra. Ora
+   il nome ha un massimo e l'avanzo va in fondo, dove non serve a nessuno ma
+   almeno non separa le cose che vanno lette insieme. */
 .cphead {
-  display: grid; grid-template-columns: minmax(0, 1fr) 96px 96px 110px 90px 80px;
+  display: grid;
+  grid-template-columns: minmax(220px, 440px) 84px 84px 104px 80px 70px minmax(0, 1fr);
   gap: 10px; padding: 0 14px 6px;
   font-size: 9.5px; letter-spacing: .09em; text-transform: uppercase;
   color: #5a6b74; font-weight: 600;
@@ -692,8 +704,8 @@ th.has-gl { cursor: help; }
   margin-bottom: 7px; overflow: hidden;
 }
 .cpdh {
-  display: grid; grid-template-columns: minmax(0, 1fr) 150px 170px;
-  gap: 10px; align-items: center; padding: 9px 14px;
+  display: grid; grid-template-columns: minmax(220px, 440px) 120px 190px minmax(0, 1fr);
+  gap: 10px; align-items: start; padding: 9px 14px;
   border-left: 3px solid #0f7173; background: #fcfdfd;
 }
 .mgmtblk .cpdh { border-left-color: #c79a3e; background: #fefbf4; }
@@ -719,7 +731,8 @@ th.has-gl { cursor: help; }
 .cpb.guess { background: #fbf0d9; color: #8a6410; }
 
 .cprow {
-  display: grid; grid-template-columns: minmax(0, 1fr) 96px 96px 110px 90px 80px;
+  display: grid;
+  grid-template-columns: minmax(220px, 440px) 84px 84px 104px 80px 70px minmax(0, 1fr);
   gap: 10px; align-items: center;
   padding: 8px 14px 8px 30px; border-top: 1px solid #f1f5f6;
 }
@@ -738,6 +751,39 @@ th.has-gl { cursor: help; }
 .cpbare a { text-decoration: none; }
 .cpbare b.num { font-weight: 600; }
 .cpbare p { margin: 7px 0 0; font-size: 11px; color: #5a6b74; }
+
+/* Il cerchietto che apre una spiegazione. Si vede: un sottolineato punteggiato
+   lo sanno leggere in pochi, e su una pagina di numeri nessuno va a cercare il
+   testo nascosto. */
+.ib {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 12px; height: 12px; margin-left: 5px; vertical-align: -1px;
+  border-radius: 50%; background: #d3dde1; color: #33525c;
+  font: italic 700 9px/1 Georgia, serif; text-transform: none; letter-spacing: 0;
+  cursor: help;
+}
+.ib:hover, .ib:focus-visible { background: #0f7173; color: #fff; outline: none; }
+
+/* Nome del progetto e, accanto, la freccia che scarica il dettaglio. Il nome
+   porta al progetto: è quello che uno si aspetta cliccandolo. */
+.cpnm { display: inline-flex; align-items: baseline; gap: 7px; min-width: 0; }
+.cpdl {
+  flex: 0 0 auto; font-size: 11px; font-weight: 700; line-height: 1;
+  color: #5a6b74; text-decoration: none; padding: 1px 4px;
+  border: 1px solid #dde5e8; border-radius: 3px; background: #f7fafb;
+}
+.cpdl:hover { color: #0f7173; border-color: #a9d3d3; background: #eef7f7; }
+
+/* I fatti del deal: cosa è stato venduto, chi lo segue, per quanto vale.
+   Una riga sola che va a capo, non una colonna di etichette. */
+.cpfacts { margin-top: 4px; display: flex; flex-wrap: wrap; gap: 3px 16px; font-size: 11.5px; color: #3f5058; }
+.cpfacts span { white-space: nowrap; }
+.cpfacts i {
+  font-style: normal; font-size: 9.5px; letter-spacing: .07em; text-transform: uppercase;
+  color: #7c8d95; font-weight: 600; margin-right: 5px;
+}
+.cpmar .cpo { display: block; margin-top: 2px; }
+.cpempty .cpn { font-size: 12px; color: #7c8d95; font-style: italic; }
 
 @media (max-width: 1100px) {
   .cpctx { grid-template-columns: repeat(3, minmax(0, 1fr)); }

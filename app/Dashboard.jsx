@@ -47,10 +47,31 @@ const GLOSS = {
   prj: "How many Zoho Projects projects carry this client's cost.",
   share: "This client's revenue over the revenue of the rows currently on screen. The search " +
          "box and the Execus toggle change the denominator.",
+  since: "The year of this client's first deal won in the CRM — not of the first invoice. A " +
+         "contract signed in December and invoiced in January starts the relationship in December.",
+  dealmg: "The CRM Amount of this deal against every hour ever logged on the projects that " +
+          "deliver it, whatever year they fall in. It does not follow the year selector: a " +
+          "contract is not a calendar year, and comparing the full amount with one year of " +
+          "hours would flatter anything that started earlier. While delivery is still running " +
+          "the cost is not final, so it is marked “so far”.",
 };
 
-const BUILD = "client panel · 28/09/2026";
-const VERSION = "0.4";
+/**
+ * Un'etichetta con la sua spiegazione dietro un cerchietto.
+ *
+ * Il sottolineato punteggiato da solo non bastava: chi non lo conosce non sa
+ * che c'è qualcosa da leggere, e su uno schermo pieno di numeri nessuno va a
+ * caccia di testo nascosto. La "i" si vede, e dice che una spiegazione esiste.
+ */
+const Gl = ({ t, children }) => (
+  <span className="cpl">
+    {children}
+    <i className="ib" title={t} tabIndex={0} role="img" aria-label={t}>i</i>
+  </span>
+);
+
+const BUILD = "deal links, Sprints tab, People column · 28/09/2026";
+const VERSION = "0.5";
 
 // Oltre questo, la richiesta si interrompe e il file passa dal link diretto.
 const WAIT_MAX = 180000;
@@ -84,7 +105,9 @@ const band = (m) => (m == null ? "" : m >= 0.3 ? "g" : m >= 0 ? "a" : "b");
  * numero che si ha davanti.
  */
 const HELP = [
+  { k: "panel", t: "The panel under a client", s: "deals, the projects that deliver them, management" },
   { k: "margins", t: "The three margins", s: "year, all time, and against the contract" },
+  { k: "sources", t: "Where the hours come from", s: "Projects, People and Sprints, and why they differ" },
   { k: "year", t: "Which year a revenue belongs to", s: "licences spread over the period they cover" },
   { k: "cost", t: "How an hour is costed", s: "payroll by month, leavers, placements" },
   { k: "internal", t: "Internal fix hours", s: "our own defects, kept out of the client's margin" },
@@ -101,6 +124,78 @@ function HelpDialog({ topic, snap, onClose }) {
   }, [onClose]);
 
   const body = {
+    panel: (
+      <>
+        <p>
+          Opening a client shows its <b>deals</b>, and under each one the <b>projects that deliver
+          it</b>. That nesting is the answer to the question people actually ask — who is doing the
+          work behind this contract — and it is the reason the panel is not a flat list.
+        </p>
+        <p>
+          The link between the two is the <code>CRMid</code> field on the project. Where it is
+          filled the project carries a green <b>CRMid</b> badge; where it is empty and a deal of the
+          same name was found, an amber <b>deduced</b> badge says so, and anything resting on that
+          link is a guess. <b>CRMid · deal not read</b> means the link is certain but that deal was
+          not in the list the CRM returned on this run, so its type, owner and dates are missing.
+        </p>
+        <p>
+          <b>Margin on contract</b>, on a deal, is its CRM Amount against every hour ever logged on
+          its projects — not against the year selected at the top. A contract does not follow the
+          calendar, and holding the full amount against a single year of hours would flatter
+          anything that started earlier. While the delivery is still open the cost is not final, so
+          it reads <i>so far</i>.
+        </p>
+        <p>
+          <b>Account management</b>, in amber, gathers the projects whose name starts with{" "}
+          <code>_</code>: work on the account that nobody invoices. It has no deal and no revenue,
+          and it counts in the client&apos;s cost because it is part of serving them. Where it is
+          large, a weak margin is a sign of how much was given away rather than of how badly the
+          work was sold.
+        </p>
+        <p>
+          <b>Deals with no project</b> at the bottom is normal for licences and one-off items:
+          there is nothing to deliver, so no project is expected. A project with hours but no deal
+          is the opposite case, and it is worth fixing — it is costed and earns nothing.
+        </p>
+        <p className="hd-note">
+          Projects with no hours in the selected period are left out: on a client of ten years
+          standing they would otherwise fill the panel with work that finished long ago. Widen the
+          year to <b>All</b> to see them.
+        </p>
+      </>
+    ),
+    sources: (
+      <>
+        <p>
+          Hours reach this page from three systems that do not agree with one another, and the
+          difference is not a fault in any of them.
+        </p>
+        <p>
+          <b>Zoho Projects</b> is the main one and the only one carrying an hourly cost on each log.
+        </p>
+        <p>
+          <b>Zoho People</b> holds time approved there and pushed across to Projects once a week.
+          The push is refused whenever the destination task does not exist, is closed, was moved, or
+          has nobody assigned to it — silently. Those hours stay in People, and they are counted
+          here. This is why any report run inside Zoho Projects shows the same hours or fewer, never
+          more. In the workbooks they are a column of their own beside the Projects hours, and the
+          total adds the two.
+        </p>
+        <p>
+          <b>Zoho Sprints</b> is where development logs its time. Zoho&apos;s bridge to Projects is
+          all but switched off on this portal, so almost none of it arrives anywhere else. It is
+          product development rather than work sold to a client, so it stays out of every client
+          margin and has a tab of its own. Sprints records no hourly cost, so those rows carry hours
+          and no money.
+        </p>
+        <p className="hd-note">
+          Archived projects are included throughout. Zoho Projects drops them from its own lists,
+          but Zoho People remembers them, so the list of projects is the union of the two. The work
+          was done; dropping it because the project has since been closed would break every
+          comparison between one year and the next.
+        </p>
+      </>
+    ),
     margins: (
       <>
         <p>
@@ -231,6 +326,12 @@ function HelpDialog({ topic, snap, onClose }) {
           This is also why the detail workbooks come in two cuts: one per deal, covering the whole
           deal, and one per project, covering that project alone. Deal and project are not always one
           to one.
+        </p>
+        <p>
+          One case used to read as two errors at once. Where an invoice carries no deal id, the deal
+          is known to this page by its name alone, and the project — linked by CRMid — was not
+          recognised as the same thing: the deal appeared with its project, and again below among
+          the deals with no project. Both keys are now tried, so it appears once.
         </p>
         {snap.links && snap.links.crmid_missing > 0 && (
           <p className="hd-note">
@@ -411,7 +512,22 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
     return [...s].filter((y) => y >= min).sort();
   }, [snap, accrual, viewer]);
 
-  const [year, setYear] = useState("all");
+  /**
+   * Si apre sull'anno in corso, non su "All".
+   *
+   * "All" è la somma di tutta la finestra: utile per giudicare un rapporto, ma
+   * non è la domanda che uno si fa aprendo la pagina — che è come sta andando
+   * adesso. Aprire sul totale storico significa che chi guarda deve ricordarsi
+   * ogni volta di stringere il periodo, e chi non se lo ricorda legge un numero
+   * che non voleva.
+   */
+  const [year, setYear] = useState(() => String(new Date().getFullYear()));
+  useEffect(() => {
+    // L'anno in corso può non esistere ancora nei dati (gennaio senza fatture,
+    // o una finestra che finisce prima): in quel caso si ripiega sull'ultimo.
+    if (year === "all" || years.includes(year)) return;
+    setYear(years.length ? years[years.length - 1] : "all");
+  }, [years]); // eslint-disable-line react-hooks/exhaustive-deps
   const [noExecus, setNoExecus] = useState(false);
   const [q, setQ] = useState("");
   const [sort, setSort] = useState({ key: "rev", dir: "desc" });
@@ -468,7 +584,15 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
   const internalRows = useMemo(() => {
     const query = iq.trim().toLowerCase();
     let out = (snap.projects || [])
-      .filter((p) => p.k === "internal" || p.k === "presale")
+      // I "_" senza cliente sono interni a tutti gli effetti.
+      // `_Digital Operations`, `_Sales`, `_Marketing`: la regola li classifica
+      // come gestione cliente perché iniziano per underscore, ma nessun nome di
+      // cliente ci somiglia, quindi non entrano nel margine di nessuno e
+      // finivano fuori da entrambe le viste — ore lavorate che la pagina non
+      // mostrava da nessuna parte. Quelli agganciati a un cliente restano dove
+      // sono, dentro il pannello di quel cliente.
+      .filter((p) => p.k === "internal" || p.k === "presale" ||
+                     (p.k === "client_mgmt" && !p.c))
       .map((p) => {
         const cy = p.cy && p.cy[year];
         const hours = year === "all" ? (p.hours || 0) : (cy ? cy.hours || 0 : 0);
@@ -478,30 +602,11 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
       })
       .filter((p) => p.h > 0 || p.ifix > 0);
 
-    /**
-     * Zoho Sprints è la terza fonte, e per la vista interna è la più pesante:
-     * lo sviluppo registra lì, e quelle ore non passano né da Projects né da
-     * People. Entrano solo qui, mai nei margini dei clienti, perché sono
-     * sviluppo di prodotto e non lavoro venduto a qualcuno.
-     */
-    const sp = (snap.sprints && snap.sprints.projects) || [];
-    for (const r of sp) {
-      if (!r.hours && !r.lifetime) continue;
-      out.push({
-        id: r.id, n: r.name, k: "internal", s: r.status,
-        h: r.hours || 0, hall: r.lifetime || null,
-        // Sprints non porta una tariffa per persona, e parte di chi ci registra
-        // non è a libro paga: un costo qui sarebbe inventato.
-        cst: null, ifix: 0, src: "sprints",
-        zpid: r.zpid || null,
-      });
-    }
-
     out = out.filter((p) => !query || (p.n || "").toLowerCase().includes(query));
 
     const val = (r) =>
       isort.key === "name" ? (r.n || "").toLowerCase()
-      : isort.key === "kind" ? r.src
+      : isort.key === "kind" ? r.k
       : isort.key === "cost" ? (r.cst == null ? -Infinity : r.cst)
       : isort.key === "hall" ? (r.hall || 0)
       : isort.key === "ifix" ? r.ifix
@@ -519,6 +624,31 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
     cost: internalRows.reduce((s2, r) => s2 + (r.cst || 0), 0),
     ifix: internalRows.reduce((s2, r) => s2 + r.ifix, 0),
   }), [internalRows]);
+
+  /**
+   * Zoho Sprints, che è una fonte a sé e merita una scheda sua.
+   *
+   * Stava mescolata ai progetti interni con un'etichetta accanto, e mescolata
+   * era illeggibile: due sistemi con regole diverse — Sprints non registra una
+   * tariffa oraria e metà di chi ci lavora non è a libro paga — sommati in una
+   * colonna sola fanno un totale che non vuol dire niente. Separati, ognuno
+   * dice quello che sa dire.
+   */
+  const sprintRows = useMemo(() => {
+    const sp = (snap.sprints && snap.sprints.projects) || [];
+    const query = iq.trim().toLowerCase();
+    return sp
+      .filter((r) => (r.hours || r.lifetime) &&
+                     (!query || (r.name || "").toLowerCase().includes(query)))
+      .map((r) => ({ ...r, h: r.hours || 0 }))
+      .sort((a, b) => b.h - a.h || b.lifetime - a.lifetime);
+  }, [snap, iq]);
+
+  const sTot = useMemo(() => ({
+    hours: sprintRows.reduce((s2, r) => s2 + r.h, 0),
+    lifetime: sprintRows.reduce((s2, r) => s2 + (r.lifetime || 0), 0),
+    bridged: sprintRows.reduce((s2, r) => s2 + (r.alreadyInProjects || 0), 0),
+  }), [sprintRows]);
 
   const rows = useMemo(() => {
     const query = q.trim().toLowerCase();
@@ -679,7 +809,7 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
               ingombra per sempre. Ora è una riga sola accanto alla versione, e
               il testo sta in un pannello che si apre solo a chi lo chiede.
             */}
-            {snap.people_union && snap.people_union.hours > 0 && (
+            {snap.people_union && (snap.people_union.hours > 0 || snap.people_union.error) && (
               <div className="pnote">
                 <button type="button" className="pnote-i"
                         aria-expanded={notes}
@@ -691,6 +821,12 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                 {notes && (
                   <div className="pnote-pop" id="people-notes" role="region"
                        aria-label="Notes on Zoho People logged hours">
+                    {snap.people_union.error && (
+                      <p className="err">
+                        Zoho People could not be read on this refresh, so these hours are missing
+                        from every figure on the page. Zoho said: {snap.people_union.error}
+                      </p>
+                    )}
                     <p>
                       <b>{fmtH(snap.people_union.hours)} hours</b> were logged in Zoho People and
                       never reached Zoho Projects. Zoho People pushes approved time logs across once
@@ -832,6 +968,11 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
           <button aria-pressed={view === "internal"} onClick={() => setView("internal")}>
             Internal &amp; pre-sales
           </button>
+          {snap.sprints && snap.sprints.projects && snap.sprints.projects.length > 0 && (
+            <button aria-pressed={view === "sprints"} onClick={() => setView("sprints")}>
+              Zoho Sprints
+            </button>
+          )}
         </div>
 
         <div className="controls">
@@ -1136,8 +1277,39 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                           const K = (x) => (year === "all" ? (x.cost || 0)
                             : (x.cy && x.cy[year] ? x.cy[year].cost || 0 : 0));
 
-                          const mgmt = pjs.filter((x) => x.k === "client_mgmt");
+                          /**
+                           * I progetti senza ore nel periodo non si mostrano.
+                           *
+                           * Aprendo Fendi sul 2026 comparivano progetti del 2022
+                           * chiusi da anni, sotto "senza deal": zero ore, zero
+                           * costo, e la domanda ovvia — perché me li fai vedere.
+                           * Un progetto che nel periodo scelto non ha lavorato
+                           * non ha niente da dire qui. Il deal a cui è agganciato
+                           * resta comunque a schermo: è la sua intestazione a
+                           * portare l'importo, non la riga del progetto.
+                           */
+                          const alive = (x) => H(x) > 0 || K(x) > 0;
+
+                          const mgmt = pjs.filter((x) => x.k === "client_mgmt" && alive(x));
                           const deliv = pjs.filter((x) => x.k !== "client_mgmt");
+
+                          /**
+                           * Lo stesso deal, due volte nella stessa schermata.
+                           *
+                           * I deal dei progetti sono agganciati per id; i deal
+                           * delle fatture sono in elenco per id **quando la
+                           * fattura lo porta**, e per nome quando non lo porta.
+                           * Le due chiavi non si riconoscevano, così un deal con
+                           * il suo progetto sopra ricompariva sotto fra quelli
+                           * "senza progetto". Il nome normalizzato è il secondo
+                           * ponte, e chiude il caso.
+                           */
+                          const nrm = (v) => String(v || "").toLowerCase().replace(/\s+/g, " ").trim();
+                          const dById = new Map(), dByName = new Map();
+                          for (const d of r.d || []) {
+                            if (d.id) dById.set(String(d.id), d);
+                            if (d.name) dByName.set(nrm(d.name), d);
+                          }
 
                           const byDeal = new Map();
                           for (const x of deliv) {
@@ -1147,38 +1319,74 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                           }
                           const noDeal = byDeal.get("__none");
                           byDeal.delete("__none");
-                          const covered = new Set([...byDeal.keys()]);
-                          const bare = (r.d || []).filter((d) => !covered.has(d.id));
+
+                          // Ogni gruppo prende la scheda del deal dalle fatture:
+                          // per id, o per nome quando la fattura l'id non ce
+                          // l'ha. È da lì che vengono tipo, moduli, owner, CSM e
+                          // periodo di licenza — e anche il nome, quando il deal
+                          // non è nella lista letta dal CRM.
+                          const covered = new Set();
+                          for (const b of byDeal.values()) {
+                            const nm = nrm(b.deal && b.deal.name);
+                            b.info = dById.get(String(b.id)) || (nm ? dByName.get(nm) : null) || null;
+                            covered.add(String(b.id));
+                            if (nm) covered.add("n:" + nm);
+                            if (b.info && b.info.name) covered.add("n:" + nrm(b.info.name));
+                            b.ps = b.ps.filter(alive);
+                          }
+                          const bare = (r.d || []).filter(
+                            (d) => !covered.has(String(d.id)) && !covered.has("n:" + nrm(d.name)));
 
                           const mgmtH = mgmt.reduce((a, x) => a + H(x), 0);
                           const mgmtK = mgmt.reduce((a, x) => a + K(x), 0);
 
                           const badge = (x) => {
                             const ok = x.link === "crmid" || x.link === "deal_name_field";
+                            const unlisted = x.link === "crmid_unlisted";
                             return (
-                              <i className={"cpb " + (ok ? "ok" : "guess")}
+                              <i className={"cpb " + (ok || unlisted ? "ok" : "guess")}
                                  title={ok
                                    ? "Linked by the CRMid written on the project. The link is certain."
+                                   : unlisted
+                                   ? "The project carries a CRMid and the link is certain, but that deal was not in the list the CRM returned, so its type, owner and licence dates are missing here."
                                    : "No CRMid on the project: the deal was matched on its name. Treat anything resting on this link as a guess."}>
-                                {ok ? "CRMid" : "deduced"}
+                                {ok ? "CRMid" : unlisted ? "CRMid ·  deal not read" : "deduced"}
                               </i>
                             );
                           };
+
+                          /**
+                           * Il nome del progetto porta al progetto, non al file.
+                           *
+                           * Prima il nome scaricava l'Excel, che è la cosa che
+                           * uno si aspetta di meno cliccando un nome: chi legge
+                           * vuole aprire il progetto. Il file resta, accanto,
+                           * come freccia — piccola e riconoscibile.
+                           */
+                          const pname = (x) => (
+                            <div className="cpn">
+                              <span className="cpnm">
+                                <a href={PROJECT(x.id)} target="_blank" rel="noreferrer"
+                                   title="Open this project in Zoho Projects">{x.n}</a>
+                                <a className="cpdl" href={xlsx("project", x.id)}
+                                   title="Download the detail: who logged these hours and when"
+                                   aria-label={"Download the detail of " + x.n}
+                                   onClick={(e) => grabLink(e, xlsx("project", x.id), x.n)}>↓</a>
+                              </span>
+                              <div className="cptags">
+                                {x.s && <i className="cpt">{x.s}</i>}
+                                {x.arch && <i className="cpt arch" title="Archived in Zoho Projects. The hours still count: the work was done.">archived</i>}
+                                {badge(x)}
+                              </div>
+                            </div>
+                          );
 
                           const prow = (x) => {
                             const h = H(x), k = K(x);
                             const d = x.bh ? Math.round((h - x.bh) * 10) / 10 : null;
                             return (
                               <div className="cprow" key={x.id}>
-                                <div className="cpn">
-                                  <a href={xlsx("project", x.id)}
-                                     onClick={(e) => grabLink(e, xlsx("project", x.id), x.n)}>{x.n}</a>
-                                  <div className="cptags">
-                                    {x.s && <i className="cpt">{x.s}</i>}
-                                    {x.arch && <i className="cpt arch" title="Archived in Zoho Projects. The hours still count: the work was done.">archived</i>}
-                                    {badge(x)}
-                                  </div>
-                                </div>
+                                {pname(x)}
                                 <div className="cpnum">{Math.round(h).toLocaleString("en-GB")}</div>
                                 <div className="cpnum sub">
                                   {year === "all" && x.ph ? Math.round(x.ph).toLocaleString("en-GB") : "—"}
@@ -1188,6 +1396,36 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                                 <div className={"cpnum " + (d == null ? "sub" : d > 0 ? "over" : "under")}>
                                   {d == null ? "—" : (d > 0 ? "+" : "") + d.toLocaleString("en-GB")}
                                 </div>
+                                <div />
+                              </div>
+                            );
+                          };
+
+                          // I fatti del deal che stavano nella vecchia colonna e
+                          // che servono ancora: cosa è stato venduto, chi lo
+                          // segue, per quanto tempo vale.
+                          const facts = (i) => {
+                            if (!i) return null;
+                            const f = [];
+                            if (i.kind && i.kind !== "unset") {
+                              f.push([i.kind === "licence" ? "Licence" : "Professional services",
+                                      i.kind === "licence"
+                                        ? (i.lic ? eurK(i.lic) : null)
+                                        : (i.del ? eurK(i.del) : null)]);
+                            }
+                            if (i.lic > 0 && i.del > 0) f.push(["Both", eurK(i.lic) + " lic · " + eurK(i.del) + " del"]);
+                            if (i.mods && i.mods.length) f.push(["Modules", i.mods.join(", ")]);
+                            if (i.ls || i.le) f.push(["Licence period", fmtDate(i.ls) + " – " + fmtDate(i.le)]);
+                            if (i.owner) f.push(["Owner", i.owner]);
+                            if (i.csm) f.push(["CSM", i.csm + (i.csm_off ? " (disabled)" : "")]);
+                            f.push(["Invoiced", eurK(year === "all" ? i.r : (i.ry && i.ry[year]) || 0) +
+                                                " · " + i.n + (i.n === 1 ? " invoice" : " invoices")]);
+                            if (i.ob > 0) f.push(["Outstanding", eurK(i.ob)]);
+                            return (
+                              <div className="cpfacts">
+                                {f.map(([k2, v], n2) => v == null ? null : (
+                                  <span key={n2}><i>{k2}</i>{v}</span>
+                                ))}
                               </div>
                             );
                           };
@@ -1199,29 +1437,29 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                                 <div><span className="cpl">Client</span><b>{r.c}</b></div>
                                 <div><span className="cpl">Billed through</span>
                                   <b>{r.ba.length ? r.ba.join(", ") : "—"}</b></div>
-                                <div><span className="cpl">Client since</span>
+                                <div><Gl t={GLOSS.since}>Client since</Gl>
                                   <b className="num">{r.since || "—"}</b></div>
-                                <div><span className="cpl gl" title={GLOSS.ltv}>Generated all time</span>
+                                <div><Gl t={GLOSS.ltv}>Generated all time</Gl>
                                   <b className="num">{r.ltv == null ? "—" : eurK(r.ltv)}</b></div>
-                                <div><span className="cpl gl" title={GLOSS.share}>Share of the period</span>
+                                <div><Gl t={GLOSS.share}>Share of the period</Gl>
                                   <b className="num">{pct(wTot ? r.rev / wTot : 0)}</b></div>
-                                <div><span className="cpl">Invoices</span>
+                                <div><Gl t={GLOSS.inv}>Invoices</Gl>
                                   <b className="num">{r.n}{r.ob > 0 && <i className="cpo"> · {eurK(r.ob)} outstanding</i>}</b></div>
 
                                 <div className="cpsep" />
 
-                                <div><span className="cpl gl" title={GLOSS.rev}>
-                                  Revenue {year === "all" ? "all time" : year}</span>
+                                <div><Gl t={GLOSS.rev}>
+                                  Revenue {year === "all" ? "all time" : year}</Gl>
                                   <b className="num">{eurK(r.rev)}</b></div>
-                                <div><span className="cpl">Hours</span>
+                                <div><Gl t={GLOSS.hrs}>Hours</Gl>
                                   <b className="num">{r.hours == null ? "—" : Math.round(r.hours).toLocaleString("en-GB")}</b></div>
                                 {!viewer && (
-                                  <div><span className="cpl gl" title={GLOSS.cost}>Real cost</span>
+                                  <div><Gl t={GLOSS.cost}>Real cost</Gl>
                                     <b className="num">{r.cost == null ? "—" : eur(r.cost)}</b></div>
                                 )}
                                 {!viewer && (
                                   <div className={r.mgmtCost ? "cpmg" : ""}>
-                                    <span className="cpl gl" title={GLOSS.mgmt}>of which management</span>
+                                    <Gl t={GLOSS.mgmt}>of which management</Gl>
                                     <b className="num">
                                       {r.mgmtCost ? eur(r.mgmtCost) : "—"}
                                       {r.mgmtShare != null && r.mgmtCost > 0 &&
@@ -1229,57 +1467,82 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                                     </b>
                                   </div>
                                 )}
-                                <div><span className="cpl gl" title={GLOSS.pct}>Margin</span>
+                                <div><Gl t={GLOSS.pct}>Margin</Gl>
                                   <b className={"num big " + band(r.marginPct)}>
                                     {r.marginPct == null ? "—" : pct(r.marginPct)}</b></div>
-                                <div><span className="cpl gl" title={GLOSS.ifix}>Internal fix</span>
+                                <div><Gl t={GLOSS.ifix}>Internal fix</Gl>
                                   <b className="num">{r.ihours ? Math.round(r.ihours).toLocaleString("en-GB") + " h" : "—"}</b></div>
                               </div>
 
                               <div className="cphead">
                                 <span>Deal and the projects that deliver it</span>
-                                <span>Hours</span>
+                                <span>Hours{year === "all" ? "" : " " + year}</span>
                                 <span>from People</span>
                                 <span>{viewer ? "—" : "Internal cost"}</span>
                                 <span>Budget h</span>
                                 <span>Δ h</span>
+                                <span />
                               </div>
 
                               {[...byDeal.values()].map((b) => {
-                                const one = b.ps.length === 1 && b.ps[0].dshare === 1;
-                                const amt = b.deal && b.deal.amount;
-                                const cost = b.ps.reduce((a, x) => a + K(x), 0);
-                                const mg = one && amt > 0 && !viewer ? (amt - cost) / amt : null;
-                                const open = b.ps.some((x) => (x.s || "").toLowerCase().indexOf("progress") >= 0);
+                                const i = b.info;
+                                const name = (b.deal && b.deal.name) || (i && i.name) || ("deal " + b.id);
+                                const amt = (b.deal && b.deal.amount) || (i && i.amount) || 0;
+                                /**
+                                 * Il margine del deal sta sul contratto intero e
+                                 * su tutte le ore mai registrate, non sull'anno
+                                 * scelto in alto.
+                                 *
+                                 * È la domanda che fanno davvero: quel contratto
+                                 * da 150k ci ha guadagnato o no. Un contratto non
+                                 * si divide per anno solare, e confrontare
+                                 * l'importo pieno con le sole ore di quest'anno
+                                 * darebbe un margine gonfio su ogni lavoro nato
+                                 * l'anno prima. Quando i progetti sono più d'uno
+                                 * il conto si fa lo stesso: il costo è la somma
+                                 * dei loro, e sommarli non inventa niente —
+                                 * inventare sarebbe attribuire il ricavo a uno.
+                                 */
+                                const all = b.ps.reduce((a, x) => a + (x.cost || 0), 0);
+                                const allH = b.ps.reduce((a, x) => a + (x.hours || 0), 0);
+                                const mg = amt > 0 && !viewer && b.ps.length ? (amt - all) / amt : null;
+                                const open = b.ps.some((x) => (x.s || "").toLowerCase().indexOf("progress") >= 0
+                                                           || (x.s || "").toLowerCase() === "active");
                                 return (
                                   <div className="cpdeal" key={b.id}>
                                     <div className="cpdh">
                                       <div className="cpn">
-                                        <a href={CRM_DEAL(b.id)} target="_blank" rel="noreferrer">
-                                          {b.deal ? b.deal.name : "deal " + b.id}</a>
-                                        {b.ps.length > 1 && (
-                                          <div className="cptags">
-                                            <i className="cpt warn" title="This deal is delivered by several projects, so its revenue belongs to all of them together. Splitting it across them would be invention.">
-                                              {b.ps.length} projects share it — no deal margin</i>
-                                          </div>
-                                        )}
+                                        <a href={CRM_DEAL(b.id)} target="_blank" rel="noreferrer">{name}</a>
+                                        {facts(i)}
                                       </div>
                                       <div className="cpamt">
                                         <span className="cpl">Amount</span>
                                         <b className="num">{amt ? eurK(amt) : "—"}</b>
                                       </div>
                                       <div className="cpmar">
-                                        {mg != null && (
+                                        {mg == null ? null : (
                                           <>
-                                            <span className="cpl">
-                                              Deal margin{open ? " · provisional" : ""}
-                                            </span>
+                                            <Gl t={GLOSS.dealmg}>
+                                              Margin on contract{open ? " · so far" : ""}
+                                            </Gl>
                                             <b className={"num " + band(mg)}>{pct(mg)}</b>
+                                            <i className="cpo">
+                                              {Math.round(allH).toLocaleString("en-GB")} h · {eurK(all)}
+                                            </i>
                                           </>
                                         )}
                                       </div>
                                     </div>
                                     {b.ps.map(prow)}
+                                    {!b.ps.length && (
+                                      <div className="cprow cpempty">
+                                        <div className="cpn">
+                                          No hours on this deal&apos;s projects
+                                          {year === "all" ? "" : " in " + year}.
+                                        </div>
+                                        <div /><div /><div /><div /><div /><div />
+                                      </div>
+                                    )}
                                   </div>
                                 );
                               })}
@@ -1310,7 +1573,7 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                                 </div>
                               )}
 
-                              {noDeal && noDeal.ps.length > 0 && (
+                              {noDeal && noDeal.ps.filter(alive).length > 0 && (
                                 <div className="cpdeal">
                                   <div className="cpdh">
                                     <div className="cpn">
@@ -1320,7 +1583,7 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                                       </div>
                                     </div>
                                   </div>
-                                  {noDeal.ps.map(prow)}
+                                  {noDeal.ps.filter(alive).map(prow)}
                                 </div>
                               )}
 
@@ -1328,9 +1591,11 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                                 <div className="cpbare">
                                   <span className="cpl">Deals with no project</span>
                                   <div>
-                                    {bare.map((d) => (
-                                      <span key={d.id}>
-                                        <a href={CRM_DEAL(d.id)} target="_blank" rel="noreferrer">{d.name}</a>
+                                    {bare.map((d, n2) => (
+                                      <span key={d.id || "n" + n2}>
+                                        {d.id
+                                          ? <a href={CRM_DEAL(d.id)} target="_blank" rel="noreferrer">{d.name}</a>
+                                          : <span>{d.name}</span>}
                                         <b className="num">{d.amount ? eurK(d.amount) : eurK(d.r)}</b>
                                       </span>
                                     ))}
@@ -1360,9 +1625,7 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
               <div className="k">Hours logged</div>
               <div className="v num">{Math.round(iTot.hours).toLocaleString("en-GB")}</div>
               <div className="s">
-                {internalRows.length} projects · {year === "all" ? "2025 on" : year}
-                {snap.sprints && snap.sprints.projects && snap.sprints.projects.length > 0 &&
-                  " · incl. Zoho Sprints"}
+                {internalRows.length} projects · {year === "all" ? (snap.min_year || 2025) + " on" : year}
               </div>
             </div>
             {!viewer && (
@@ -1386,9 +1649,12 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
           <p className="basis">
             <b>Internal work and pre-sales.</b> Projects with no client behind them: internal
             operations, development, admin, and the pre-sales effort spent before a deal exists.
-            There is no revenue to put against these hours, so there is no margin — only what they
-            cost. Archived projects are included: the hours were worked, and dropping them because
-            the project has since been closed would break every year-on-year comparison.
+            Projects named with a leading <code>_</code> that match no client — <code>_Digital
+            Operations</code> and the like — are here too: the underscore marks account work, but
+            there is no account to charge it to. There is no revenue to put against any of these
+            hours, so there is no margin — only what they cost. Archived projects are included: the
+            hours were worked, and dropping them because the project has since been closed would
+            break every year-on-year comparison. Zoho Sprints has its own tab.
           </p>
 
           <div className="controls">
@@ -1403,7 +1669,8 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                 <tr>
                   {ith("name", "Project")}
                   {ith("kind", "Source")}
-                  {ith("hours", year === "all" ? "Hours 2025 on" : "Hours " + year, true)}
+                  {ith("hours", year === "all"
+                    ? "Hours " + (snap.min_year || 2025) + " on" : "Hours " + year, true)}
                   {ith("hall", "Hours since start", true)}
                   {!viewer && ith("cost", "Real cost", true)}
                   {ith("ifix", "Internal fix h", true)}
@@ -1414,15 +1681,19 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                   <tr key={p.id}>
                     <td>
                       <div className="cli">
-                        <a href={xlsx("project", p.id)} className="clidl"
-                           title="Download who logged these hours and when"
-                           onClick={(e) => grabLink(e, xlsx("project", p.id), p.n)}>{p.n}</a>
+                        <a href={PROJECT(p.id)} target="_blank" rel="noreferrer"
+                           title="Open this project in Zoho Projects">{p.n}</a>
+                        <a className="cpdl" href={xlsx("project", p.id)}
+                           title="Download the detail: who logged these hours and when"
+                           aria-label={"Download the detail of " + p.n}
+                           onClick={(e) => grabLink(e, xlsx("project", p.id), p.n)}>↓</a>
                       </div>
                       {p.s && <div className="via">{p.s}</div>}
                     </td>
                     <td>
-                      <i className={"tag " + (p.src === "sprints" ? "lic" : p.k === "presale" ? "warn" : "mod")}>
-                        {p.src === "sprints" ? "Sprints" : p.k === "presale" ? "pre-sales" : "Projects"}
+                      <i className={"tag " + (p.k === "presale" ? "warn" : p.k === "client_mgmt" ? "lic" : "mod")}>
+                        {p.k === "presale" ? "pre-sales"
+                          : p.k === "client_mgmt" ? "account, no client" : "internal"}
                       </i>
                     </td>
                     <td className="r num">{Math.round(p.h).toLocaleString("en-GB")}</td>
@@ -1456,19 +1727,108 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
           </div>
 
           <p className="tablenote">
-            Click a project name to download who logged the hours and when. The file carries no
-            margin and no revenue, because neither exists here.
+            The project name opens the project in Zoho Projects; the arrow beside it downloads who
+            logged the hours and when. The file carries no margin and no revenue, because neither
+            exists here.
           </p>
-          {snap.sprints && snap.sprints.projects && snap.sprints.projects.length > 0 && (
-            <p className="tablenote">
-              <b>Zoho Sprints is counted here and nowhere else.</b> Development logs its time in
-              Sprints, and Zoho&apos;s bridge to Projects is all but switched off on this portal, so
-              those hours reach neither Zoho Projects nor Zoho People. They are product development
-              rather than work sold to a client, so they stay out of every client margin — but they
-              are real hours, and the people who logged them show far fewer hours anywhere else.
-              Sprints records no hourly cost, so these rows carry hours only.
-            </p>
-          )}
+        </>
+        )}
+
+        {/* ---------------------------------------------------------- Sprints --
+            Una scheda sua, non una riga in mezzo agli interni. Sprints non
+            registra una tariffa oraria e metà di chi ci lavora non è a libro
+            paga: mescolarlo a una tabella che ha una colonna "costo reale"
+            produce un totale che non significa niente. */}
+        {view === "sprints" && (
+        <>
+          <div className="kpis">
+            <div className="kpi">
+              <div className="k">Hours logged</div>
+              <div className="v num">{Math.round(sTot.hours).toLocaleString("en-GB")}</div>
+              <div className="s">
+                {sprintRows.length} projects · {year === "all" ? (snap.min_year || 2025) + " on" : "whole window"}
+              </div>
+            </div>
+            <div className="kpi">
+              <div className="k">Hours since start</div>
+              <div className="v num">{Math.round(sTot.lifetime).toLocaleString("en-GB")}</div>
+              <div className="s">every log Sprints holds, whatever the year</div>
+            </div>
+            <div className="kpi">
+              <div className="k">Reached Zoho Projects</div>
+              <div className="v num">{Math.round(sTot.bridged).toLocaleString("en-GB")}</div>
+              <div className="s">
+                {sTot.lifetime > 0
+                  ? pct(sTot.bridged / sTot.lifetime) + " of them — the bridge is all but off"
+                  : "—"}
+              </div>
+            </div>
+          </div>
+
+          <p className="basis">
+            <b>Zoho Sprints is a third source, and it is counted here and nowhere else.</b>{" "}
+            Development logs its time in Sprints, and Zoho&apos;s bridge to Zoho Projects is all but
+            switched off on this portal, so those hours reach neither Zoho Projects nor Zoho People.
+            They are product development rather than work sold to a client, so they stay out of every
+            client margin. They are still real hours: anyone counting a person&apos;s time without
+            them is counting a fraction of it. Sprints records no hourly cost and part of the people
+            logging there are not on the payroll, so these rows carry hours and no cost — a cost here
+            would be invented.
+          </p>
+
+          <div className="controls">
+            <input className="search" type="search" placeholder="Filter Sprints projects…"
+                   value={iq} onChange={(e) => setIq(e.target.value)}
+                   aria-label="Filter Sprints projects" />
+          </div>
+
+          <div className="tablewrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Project</th>
+                  <th>Status</th>
+                  <th className="r">
+                    {year === "all" ? "Hours " + (snap.min_year || 2025) + " on" : "Hours in window"}
+                  </th>
+                  <th className="r">Hours since start</th>
+                  <th className="r">Already in Projects</th>
+                  <th className="r">Logs</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sprintRows.map((p) => (
+                  <tr key={p.id}>
+                    <td><div className="cli">{p.name}</div></td>
+                    <td>{p.status ? <i className="tag mod">{p.status}</i> : "—"}</td>
+                    <td className="r num">{Math.round(p.h).toLocaleString("en-GB")}</td>
+                    <td className="r num dim">
+                      {p.lifetime ? Math.round(p.lifetime).toLocaleString("en-GB") : "—"}
+                    </td>
+                    <td className="r num dim"
+                        title={p.zpid
+                          ? "This Sprints project is linked to a Zoho Projects project, so the hours shown here may already be counted there."
+                          : "Not linked to any Zoho Projects project, so none of these hours exist on the Projects side."}>
+                      {p.alreadyInProjects
+                        ? Math.round(p.alreadyInProjects).toLocaleString("en-GB")
+                        : "—"}
+                    </td>
+                    <td className="r num dim">{(p.logs || 0).toLocaleString("en-GB")}</td>
+                  </tr>
+                ))}
+                {!sprintRows.length && (
+                  <tr><td colSpan={6} className="na">No Sprints project has hours here.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <p className="tablenote">
+            <b>Already in Projects</b> is the guard against double counting: it is the part of each
+            project&apos;s hours that Zoho&apos;s own bridge has copied into Zoho Projects, where the
+            rest of this dashboard would already have seen them. Everywhere it reads a dash, none of
+            those hours exist anywhere else.
+          </p>
         </>
         )}
 
