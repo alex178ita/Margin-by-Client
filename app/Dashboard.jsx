@@ -86,8 +86,8 @@ function Gl({ t, children }) {
   );
 }
 
-const BUILD = "project-cost endpoint · 28/09/2026";
-const VERSION = "0.7.5";
+const BUILD = "project-cost: più progetti, chiave condivisa · 28/09/2026";
+const VERSION = "0.7.7";
 
 // Oltre questo, la richiesta si interrompe e il file passa dal link diretto.
 const WAIT_MAX = 180000;
