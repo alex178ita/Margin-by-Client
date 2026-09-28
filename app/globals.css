@@ -599,21 +599,44 @@ th.ifix, td.ifix { background: color-mix(in srgb, #7a5ea8 6%, transparent); colo
 .det .tag.ifix { color: #7a5ea8; border-color: currentColor; }
 .det .tag.m .alt { color: inherit; opacity: 0.75; }
 
-/* L'avviso che le ore arrivano da due sistemi. Sta in testa alla pagina e non
-   si chiude: non è una notifica, è una premessa alla lettura di ogni numero
-   sotto. Il tono è informativo, non allarmato — non c'è niente da riparare. */
-.punion {
-  margin-top: 8px;
-  max-width: 78ch;
-  padding: 8px 11px;
-  border-left: 3px solid #4a90a4;
-  background: #eef6f9;
-  border-radius: 0 4px 4px 0;
-  font-size: 12px;
-  line-height: 1.5;
-  color: #33525c;
+/* Le note sulle ore che arrivano da Zoho People.
+   Prima era un riquadro fisso in testa alla pagina: un testo che si legge una
+   volta e poi occupa spazio per sempre, sopra i numeri che uno è venuto a
+   vedere. Ora è una riga sola sullo sfondo scuro dell'intestazione, con il
+   cerchietto bianco che apre il testo a chi lo vuole. */
+.pnote { position: relative; margin-top: 6px; }
+.pnote-i {
+  display: inline-flex; align-items: center; gap: 7px;
+  background: none; border: 0; padding: 0; cursor: pointer;
+  font: inherit; color: #b8ccd4; letter-spacing: .01em;
 }
-.punion strong { color: #1f3d47; }
+.pnote-i > span:first-child {
+  width: 15px; height: 15px; border-radius: 50%; flex: 0 0 15px;
+  background: #ffffff; color: #0d1b2a;
+  font: italic 700 10px/15px Georgia, serif; text-align: center;
+}
+.pnote-lbl { font-size: 11.5px; text-decoration: underline dotted rgba(184,204,212,.5); text-underline-offset: 3px; }
+.pnote-i:hover { color: #ffffff; }
+.pnote-i:hover .pnote-lbl { text-decoration-color: rgba(255,255,255,.7); }
+.pnote-i:focus-visible { outline: 2px solid #ffffff; outline-offset: 3px; border-radius: 3px; }
+
+.pnote-pop {
+  position: absolute; z-index: 40; top: 24px; left: 0;
+  width: min(560px, calc(100vw - 48px));
+  background: #ffffff; color: #33525c;
+  border: 1px solid #d8e2e6; border-radius: 6px;
+  padding: 14px 16px 12px;
+  box-shadow: 0 10px 30px rgba(13, 27, 42, .22);
+  font-size: 12.5px; line-height: 1.55; text-align: left;
+}
+.pnote-pop p { margin: 0 0 9px; }
+.pnote-pop p:last-of-type { margin-bottom: 4px; }
+.pnote-pop b { color: #16212b; }
+.pnote-x {
+  margin-top: 6px; background: none; border: 0; padding: 0; cursor: pointer;
+  font: inherit; font-size: 11.5px; font-weight: 600; color: #0f7173;
+}
+.pnote-x:hover { text-decoration: underline; }
 
 /* Il selettore fra le due viste. Sta sopra i controlli perché cambia cosa si
    sta guardando, non come lo si filtra: le due cose non vanno mescolate. */
@@ -629,3 +652,96 @@ th.ifix, td.ifix { background: color-mix(in srgb, #7a5ea8 6%, transparent); colo
    dove non ci si aspetta di poterci passare sopra. */
 th.has-gl { cursor: help; }
 .gl { text-decoration: underline dotted rgba(0,0,0,.22); text-underline-offset: 3px; cursor: help; }
+
+/* ---- Il pannello che si apre sotto un cliente -------------------------------
+   Due zone: il contesto in alto, separato da una riga, e sotto i deal con i
+   progetti che li consegnano annidati dentro. L'annidamento è la risposta alla
+   domanda che la gente fa aprendo la riga — chi consegna cosa — e costa meno
+   di frecce disegnate fra due colonne, che poi mentirebbero quando un deal ha
+   più progetti. */
+.cpanel { padding: 14px 16px 16px; }
+
+.cpctx {
+  display: grid; grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 14px 20px;
+  background: #fff; border: 1px solid #e3e9ec; border-radius: 6px;
+  padding: 14px 16px; margin-bottom: 16px;
+}
+.cpctx > div { min-width: 0; }
+.cpsep { grid-column: 1 / -1; height: 1px; background: #edf1f3; }
+.cpl {
+  display: block; font-size: 9.5px; letter-spacing: .09em; text-transform: uppercase;
+  color: #5a6b74; font-weight: 600; margin-bottom: 3px;
+}
+.cpctx b { font-size: 14px; color: #16212b; font-weight: 600; }
+.cpctx b.big { font-size: 20px; }
+.cpo { font-style: normal; font-weight: 500; font-size: 11px; color: #5a6b74; }
+.cpmg { background: #fbf0d9; margin: -6px -8px; padding: 6px 8px; border-radius: 4px; }
+.cpmg .cpl, .cpmg b { color: #8a6410; }
+
+.cphead {
+  display: grid; grid-template-columns: minmax(0, 1fr) 96px 96px 110px 90px 80px;
+  gap: 10px; padding: 0 14px 6px;
+  font-size: 9.5px; letter-spacing: .09em; text-transform: uppercase;
+  color: #5a6b74; font-weight: 600;
+}
+.cphead span + span { text-align: right; }
+
+.cpdeal {
+  background: #fff; border: 1px solid #e3e9ec; border-radius: 6px;
+  margin-bottom: 7px; overflow: hidden;
+}
+.cpdh {
+  display: grid; grid-template-columns: minmax(0, 1fr) 150px 170px;
+  gap: 10px; align-items: center; padding: 9px 14px;
+  border-left: 3px solid #0f7173; background: #fcfdfd;
+}
+.mgmtblk .cpdh { border-left-color: #c79a3e; background: #fefbf4; }
+.cpamt, .cpmar { text-align: right; }
+.cpamt .cpl, .cpmar .cpl { margin-bottom: 1px; }
+.cpdh b.num { font-size: 14px; font-weight: 600; }
+
+.cpn a { font-size: 13px; font-weight: 600; text-decoration: none; }
+.cpn b { font-size: 13px; }
+.cptags { margin-top: 3px; display: flex; gap: 5px; flex-wrap: wrap; align-items: center; }
+.cpt {
+  font-style: normal; font-size: 10px; font-weight: 600; padding: 1px 6px;
+  border-radius: 3px; background: #eef1f3; color: #3f5058; white-space: nowrap;
+}
+.cpt.arch { background: #eae4f2; color: #58427a; }
+.cpt.warn { background: #fbf0d9; color: #8a6410; }
+.cpt.mg { background: #faefdd; color: #8a5a18; }
+.cpb {
+  font-style: normal; font-size: 10px; font-weight: 600; padding: 1px 6px;
+  border-radius: 3px; white-space: nowrap; cursor: help;
+}
+.cpb.ok { background: #e4f0ea; color: #2f7a55; }
+.cpb.guess { background: #fbf0d9; color: #8a6410; }
+
+.cprow {
+  display: grid; grid-template-columns: minmax(0, 1fr) 96px 96px 110px 90px 80px;
+  gap: 10px; align-items: center;
+  padding: 8px 14px 8px 30px; border-top: 1px solid #f1f5f6;
+}
+.cprow .cpn a { font-size: 12.5px; font-weight: 500; }
+.cpnum { text-align: right; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.cpnum.sub { color: #5a6b74; font-size: 11.5px; }
+.cpnum.over { color: #a63a2e; font-weight: 600; }
+.cpnum.under { color: #2f7a55; font-weight: 600; }
+
+.cpbare {
+  background: #fff; border: 1px solid #e3e9ec; border-radius: 6px;
+  padding: 10px 14px; margin-bottom: 7px;
+}
+.cpbare > div { display: flex; flex-wrap: wrap; gap: 6px 22px; }
+.cpbare > div > span { display: flex; gap: 8px; align-items: baseline; font-size: 12.5px; }
+.cpbare a { text-decoration: none; }
+.cpbare b.num { font-weight: 600; }
+.cpbare p { margin: 7px 0 0; font-size: 11px; color: #5a6b74; }
+
+@media (max-width: 1100px) {
+  .cpctx { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .cphead { display: none; }
+  .cprow, .cpdh { grid-template-columns: minmax(0, 1fr) 90px; }
+  .cprow > div:nth-child(n+4), .cpdh > div:nth-child(3) { display: none; }
+}

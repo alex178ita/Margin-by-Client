@@ -49,8 +49,8 @@ const GLOSS = {
          "box and the Execus toggle change the denominator.",
 };
 
-const BUILD = "archived + sprints · 28/09/2026";
-const VERSION = "0.3";
+const BUILD = "client panel · 28/09/2026";
+const VERSION = "0.4";
 
 // Oltre questo, la richiesta si interrompe e il file passa dal link diretto.
 const WAIT_MAX = 180000;
@@ -420,6 +420,8 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
   // ricavo accanto a righe che ne hanno uno inviterebbe a leggere una perdita
   // dove c'è solo costo previsto.
   const [view, setView] = useState("clients");
+  // Il pannello delle note su People: chiuso finché non lo si chiede.
+  const [notes, setNotes] = useState(false);
   const [iq, setIq] = useState("");
   const [isort, setIsort] = useState({ key: "hours", dir: "desc" });
   const [open, setOpen] = useState(null);
@@ -671,23 +673,51 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
               {viewer && <span className="viewbadge">summary view</span>}
             </div>
             {/*
-              Le ore non vengono più da una sola fonte, e questo va detto sulla
-              pagina, non in un endpoint: chi confronta questi numeri con un
-              report di Zoho Projects trova di meno e deve sapere perché, o
-              penserà che uno dei due sia rotto.
+              Le ore non vengono più da una sola fonte, e va detto — ma non
+              gridato. La prima versione era un riquadro fisso di quattro righe
+              in cima alla pagina: una premessa che si legge una volta e poi
+              ingombra per sempre. Ora è una riga sola accanto alla versione, e
+              il testo sta in un pannello che si apre solo a chi lo chiede.
             */}
             {snap.people_union && snap.people_union.hours > 0 && (
-              <div className="punion">
-                <strong>Hours include Zoho People.</strong>{" "}
-                {fmtH(snap.people_union.hours)} h were logged in Zoho People and never reached
-                Zoho Projects, and they are counted here.{" "}
-                Any report you run inside Zoho Projects will therefore show the same hours or fewer,
-                never more — that is expected, not an error. Archived projects are included too: the
-                work was done, and dropping it because the project has since been closed would break
-                every comparison between one year and the next.
-                {snap.people_union.unrated > 0 && (
-                  <> {fmtH(snap.people_union.unrated)} h of them have no hourly cost on record and
-                  are priced at zero.</>
+              <div className="pnote">
+                <button type="button" className="pnote-i"
+                        aria-expanded={notes}
+                        aria-controls="people-notes"
+                        onClick={() => setNotes((v) => !v)}>
+                  <span aria-hidden="true">i</span>
+                  <span className="pnote-lbl">Notes on Zoho People logged hours</span>
+                </button>
+                {notes && (
+                  <div className="pnote-pop" id="people-notes" role="region"
+                       aria-label="Notes on Zoho People logged hours">
+                    <p>
+                      <b>{fmtH(snap.people_union.hours)} hours</b> were logged in Zoho People and
+                      never reached Zoho Projects. Zoho People pushes approved time logs across once
+                      a week, and the push is refused whenever the destination task does not exist,
+                      is closed, was moved, or has nobody assigned to it. Those hours are counted
+                      here.
+                    </p>
+                    <p>
+                      Any report you run inside Zoho Projects will therefore show the same hours or
+                      fewer, never more. That is expected, not an error in either system.
+                    </p>
+                    <p>
+                      Archived projects are included as well: the work was done, and dropping it
+                      because the project has since been closed would break every comparison between
+                      one year and the next.
+                    </p>
+                    {snap.people_union.unrated > 0 && (
+                      <p>
+                        {fmtH(snap.people_union.unrated)} of those hours have no hourly cost on
+                        record — neither a payslip nor a rate in Zoho Projects — so they count as
+                        hours and cost nothing.
+                      </p>
+                    )}
+                    <button type="button" className="pnote-x" onClick={() => setNotes(false)}>
+                      Close
+                    </button>
+                  </div>
                 )}
               </div>
             )}
@@ -1089,263 +1119,229 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                           "of which management" ne aggiunge una, ma solo per chi
                           vede i costi: con la vista ridotta la colonna non c'è. */}
                       <td colSpan={(year === "all" ? 12 : 13) + (viewer ? 0 : 1)}>
-                        <div className="det">
-                          <div>
-                            <h4>Client</h4>
-                            <ul>
-                              <li>
-                                <span className="gl" title={GLOSS.rev}>
-                                  Revenue {year === "all" ? "all time" : "in " + year}
-                                </span>
-                                <b className="num">{eurK(r.rev)}</b>
-                              </li>
-                              <li>
-                                <span className="gl" title={GLOSS.share}>
-                                  Share of the {year === "all" ? "period" : year}
-                                </span>
-                                <b className="num">{pct(wTot ? r.rev / wTot : 0)}</b>
-                              </li>
-                              {r.ihours > 0 && (
-                                <li className="ifix">
-                                  <span>Internal fix hours (not in the margin)</span>
-                                  <b className="num">{Math.round(r.ihours).toLocaleString("en-GB")}</b>
-                                </li>
-                              )}
-                              <li className="crm">
-                                <span className="gl" title={GLOSS.amt}>Contract value (CRM amount)</span>
-                                <b className="num">{r.amt == null ? "—" : eurK(r.amt)}</b>
-                              </li>
-                              <li className="crm">
-                                <span className="gl" title={GLOSS.pctamt}>Margin on contract</span>
-                                <b className={"num " + band(r.marginPctAmt)}>
-                                  {r.marginAmt == null ? "—" : eurK(r.marginAmt)}
-                                  {r.marginPctAmt == null ? "" : " · " + pct(r.marginPctAmt)}
-                                </b>
-                              </li>
-                              <li title={r.ltvn + " Won deal" + (r.ltvn === 1 ? "" : "s") +
-                                         " in CRM, all time — a different measure from invoiced revenue"}>
-                                <span className="gl" title={GLOSS.ltv}>Lifetime value (CRM Won deals)</span>
-                                <b className="num">{r.ltv == null ? "—" : eurK(r.ltv)}</b>
-                              </li>
-                            </ul>
-                            <h4 style={{ marginTop: 14 }}>Revenue by year</h4>
-                            {accrual && <div className="dhead"><span /><i>accrued</i><i>invoiced</i></div>}
-                            <ul>
-                              {[...new Set([
-                                ...Object.keys(r.ra || {}),
-                                ...Object.keys(r.ry || {}),
-                              ])].sort().map((y) => (
-                                <li key={y}>
-                                  <span>{y}</span>
-                                  {accrual && (
-                                    <b className="num">{(r.ra && r.ra[y]) ? eurK(r.ra[y]) : "—"}</b>
-                                  )}
-                                  <b className="num dim">{r.ry[y] ? eurK(r.ry[y]) : "—"}</b>
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                          <div className="wide">
-                            <h4>Deals</h4>
-                            <ul className="deals">
-                              {r.d.length === 0 && <li><span className="na">no deal linked</span></li>}
-                              {r.d.map((d) => (
-                                <li key={d.id || d.name} className={d.rev ? "rev" : ""}>
-                                  <span className="dl">
-                                    {d.id ? (
-                                      <a href={CRM_DEAL(d.id)} target="_blank" rel="noopener noreferrer"
-                                         title={"Open " + d.name + " in Zoho CRM"}
-                                         onClick={(e) => e.stopPropagation()}>{d.name}</a>
-                                    ) : <span title={d.name}>{d.name}</span>}
-                                    <em className="tags">
-                                      <i className={"tag " + (d.kind === "licence" ? "lic" : d.kind === "services" ? "svc" : "unk")}>
-                                        {d.kind === "licence" ? "Licence"
-                                          : d.kind === "services" ? "Prof. services" : "type not set"}
-                                      </i>
-                                      {d.kind === "licence" && d.mods && d.mods.length > 0 &&
-                                        <i className="tag mod">{d.mods.join(" · ")}</i>}
-                                      {d.owner && <i className="tag who">Owner {d.owner}</i>}
-                                      {d.csm && <i className={"tag who" + (d.csm_off ? " off" : "")}>
-                                        CSM {d.csm}{d.csm_off ? " (disabled)" : ""}</i>}
-                                      {d.rev > 0 && <i className="tag warn">
-                                        {d.rev} invoice{d.rev > 1 ? "s" : ""} reversed · {eurK(d.cn)} out</i>}
-                                    </em>
-                                  </span>
-                                  <b className="num">
-                                    {(() => {
-                                      // Valore del deal e quanto pesa sul
-                                      // cliente nel periodo che si sta
-                                      // guardando: due numeri, una riga.
-                                      const dv = year === "all" ? d.r : (d.ry ? d.ry[year] || 0 : 0);
-                                      const sh = r.rev ? dv / r.rev : null;
-                                      const label = eurK(dv) + (sh == null ? "" : " · " + pct(sh));
-                                      const tip = "Deal revenue " +
-                                        (year === "all" ? "over the whole period" : "accrued in " + year) +
-                                        (sh == null ? "" : " — " + pct(sh) + " of " + r.c + " in the same period");
-                                      return d.id ? (
-                                        <a href={xlsx("deal", d.id)} className="xl" title={tip}
-                                           onClick={(e) => grabLink(e, xlsx("deal", d.id), d.name || "this deal")}>{label}</a>
-                                      ) : <span title={tip}>{label}</span>;
-                                    })()}
-                                  </b>
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                          <div>
-                            <h4>Billed through</h4>
-                            <ul>
-                              {r.ba.map((b) => <li key={b}><span title={b}>{b}</span></li>)}
-                            </ul>
-                          </div>
-                          <div className="wide">
-                            <h4>Costed projects ({r.pj.length})</h4>
-                            <ul>
-                              {r.pj.length === 0 && (
-                                <li><span className="na">no project attributed</span></li>
-                              )}
-                              {snap.projects
-                                .filter((p) => r.pj.includes(p.id))
-                                .map((p) => {
-                                  // Il progetto segue l'anno come il cliente:
-                                  // ore e costo dell'anno contro il ricavo di
-                                  // competenza dell'anno del deal che serve.
-                                  const pc = year === "all" ? p.cost
-                                    : costPerYear ? (p.cy && p.cy[year] ? p.cy[year].cost : 0) : null;
-                                  const ph = year === "all" ? p.hours
-                                    : costPerYear ? (p.cy && p.cy[year] ? p.cy[year].hours : 0) : null;
-                                  const pr = year === "all" ? p.drev
-                                    : (p.dry ? p.dry[year] || 0 : null);
-                                  const pm = pc == null || pr == null ? null : pr - pc;
-                                  const pmp = pm == null || !pr ? null : pm / pr;
-                                  const pmpAll = p.cost == null || !p.drev || p.dshare !== 1 ? null
-                                    : (p.drev - p.cost) / p.drev;
-                                  // Ore di debug interno del progetto, e il
-                                  // margine che si avrebbe contandole.
-                                  const pih = year === "all" ? (p.ih || 0)
-                                    : (p.cy && p.cy[year] ? p.cy[year].ih || 0 : 0);
-                                  const pic = year === "all" ? (p.ic || 0)
-                                    : (p.cy && p.cy[year] ? p.cy[year].ic || 0 : 0);
-                                  const pmpIn = pmp == null || !pic || !pr ? null : (pr - pc - pic) / pr;
-                                  // Quanto pesa il deal servito da questo
-                                  // progetto sul cliente, nello stesso periodo.
-                                  const psh = pr != null && r.rev ? pr / r.rev : null;
-                                  return (
-                                  <li key={p.id}
-                                      className={p.link === "crmid" || p.link === "deal_name_field" ? "" : "link"}>
-                                    <span className="dl">
-                                      <a href={PROJECT(p.id)} target="_blank" rel="noopener noreferrer"
-                                         title={"Open " + p.n + " in Zoho Projects"}
-                                         onClick={(e) => e.stopPropagation()}>{p.n}</a>
-                                      <em className="tags">
-                                        {p.link === "crmid" && p.deal &&
-                                          <i className="tag ok">linked to {p.deal.name}</i>}
-                                        {p.link === "deal_name_field" && p.deal &&
-                                          <i className="tag ok">Deal Name field — {p.deal.name}</i>}
-                                        {p.link === "name_guess" && p.deal &&
-                                          <i className="tag warn">Missing CRMid — guessed {p.deal.name}</i>}
-                                        {p.link === "name_ambiguous" &&
-                                          <i className="tag warn">Missing CRMid — several deals share this name</i>}
-                                        {p.link === "crmid_unknown" &&
-                                          <i className="tag warn">CRMid on the project matches no deal</i>}
-                                        {p.link === "none" &&
-                                          <i className="tag warn">Missing CRMid in Projects</i>}
-                                        {p.k === "client_mgmt" && <i className="tag mod">management</i>}
-                                        {p.arch && (
-                                          <i className="tag" title="Archived in Zoho Projects. Its hours still count: the work was done.">
-                                            archived
-                                          </i>
-                                        )}
-                                        {/* Il valore del deal e il suo peso sul
-                                            cliente: la riga dice da sola perché
-                                            questo progetto conta. */}
-                                        {pr != null && p.dshare === 1 && (
-                                          <i className="tag"
-                                             title={"Revenue of the deal this project delivers, " +
-                                               (year === "all" ? "over the whole period" : "accrued in " + year) +
-                                               (psh == null ? "" : " — " + pct(psh) + " of " + r.c)}>
-                                            deal {eurK(pr)}{psh == null ? "" : " · " + pct(psh) + " of client"}
-                                          </i>
-                                        )}
-                                        {pmp != null && p.dshare === 1 && (
-                                          <i className={"tag m " + band(pmp)}>
-                                            margin {eurK(pm)} · {pct(pmp)}
-                                            {pmpIn != null && <em className="alt"> ({pct(pmpIn)})</em>}
-                                            {year !== "all" ? " in " + year : ""}
-                                          </i>
-                                        )}
-                                        {pmpAll != null && p.dshare === 1 && year !== "all" && (
-                                          <i className={"tag m dim " + band(pmpAll)}>
-                                            {pct(pmpAll)} all time
-                                          </i>
-                                        )}
-                                        {p.drev != null && p.dshare > 1 && (
-                                          <i className="tag warn" title={"This deal is delivered by " + p.dshare +
-                                             " projects, so its revenue belongs to all of them together and " +
-                                             "no margin can be attributed to this one alone"}>
-                                            {p.dshare} projects share this deal — no margin
-                                          </i>
-                                        )}
-                                        {ph != null && (
-                                          <i className="tag">{Math.round(ph).toLocaleString("en-GB")} h</i>
-                                        )}
-                                        {pih > 0 && (
-                                          <i className="tag ifix"
-                                             title="Hours on the internal fix list, kept out of this project's cost">
-                                            {Math.round(pih).toLocaleString("en-GB")} h internal fix
-                                          </i>
-                                        )}
-                                      </em>
-                                    </span>
-                                    <b className="num">
-                                      {(() => {
-                                        // Il costo del progetto è l'unico numero
-                                        // che resta dietro la password: chi non
-                                        // l'ha vede le ore al suo posto.
-                                        const v = viewer
-                                          ? (ph == null ? null : Math.round(ph).toLocaleString("en-GB") + " h")
-                                          : (pc == null ? null : eurK(pc));
-                                        if (v == null) {
-                                          return <span className="pill">
-                                            {p.k === "client_mgmt" ? "management" : "delivery"}
-                                          </span>;
-                                        }
-                                        return <a href={xlsx("project", p.id)} className="xl"
-                                                  title="Download the detail workbook for this project"
-                                                  onClick={(e) => grabLink(e, xlsx("project", p.id), p.n || "this project")}>{v}</a>;
-                                      })()}
-                                    </b>
-                                  </li>
-                                  );
-                                })}
-                            </ul>
-                          </div>
-                          {(() => {
-                            // La legenda compare solo per le segnalazioni che
-                            // questo cliente ha davvero: una legenda che spiega
-                            // colori assenti è rumore.
-                            const anyRev = r.d.some((d) => d.rev > 0);
-                            const anyLink = snap.projects.some((p) => r.pj.includes(p.id) &&
-                              p.link !== "crmid" && p.link !== "deal_name_field");
-                            if (!anyRev && !anyLink) return null;
+                        {(() => {
+                          /**
+                           * Il pannello del cliente.
+                           *
+                           * Prima erano tre colonne di voci affiancate: contesto,
+                           * deal e progetti tutti allo stesso livello, senza dire
+                           * quale progetto consegnasse quale deal. La domanda che
+                           * la gente fa aprendo una riga è proprio quella, e
+                           * l'unico modo di risponderla senza frecce disegnate è
+                           * annidare: ogni deal con sotto i suoi progetti.
+                           */
+                          const pjs = (snap.projects || []).filter((x) => r.pj.includes(x.id));
+                          const H = (x) => (year === "all" ? (x.hours || 0)
+                            : (x.cy && x.cy[year] ? x.cy[year].hours || 0 : 0));
+                          const K = (x) => (year === "all" ? (x.cost || 0)
+                            : (x.cy && x.cy[year] ? x.cy[year].cost || 0 : 0));
+
+                          const mgmt = pjs.filter((x) => x.k === "client_mgmt");
+                          const deliv = pjs.filter((x) => x.k !== "client_mgmt");
+
+                          const byDeal = new Map();
+                          for (const x of deliv) {
+                            const k = x.dealId || "__none";
+                            if (!byDeal.has(k)) byDeal.set(k, { id: x.dealId, deal: x.deal, ps: [] });
+                            byDeal.get(k).ps.push(x);
+                          }
+                          const noDeal = byDeal.get("__none");
+                          byDeal.delete("__none");
+                          const covered = new Set([...byDeal.keys()]);
+                          const bare = (r.d || []).filter((d) => !covered.has(d.id));
+
+                          const mgmtH = mgmt.reduce((a, x) => a + H(x), 0);
+                          const mgmtK = mgmt.reduce((a, x) => a + K(x), 0);
+
+                          const badge = (x) => {
+                            const ok = x.link === "crmid" || x.link === "deal_name_field";
                             return (
-                              <div className="legend">
-                                {anyRev && (
-                                  <span>
-                                    <i className="sw-rev" />
-                                    invoice reversed by a credit note — out of the revenue
-                                  </span>
-                                )}
-                                {anyLink && (
-                                  <span>
-                                    <i className="sw-link" />
-                                    link to the deal not from CRMid — costed, revenue uncertain
-                                  </span>
-                                )}
+                              <i className={"cpb " + (ok ? "ok" : "guess")}
+                                 title={ok
+                                   ? "Linked by the CRMid written on the project. The link is certain."
+                                   : "No CRMid on the project: the deal was matched on its name. Treat anything resting on this link as a guess."}>
+                                {ok ? "CRMid" : "deduced"}
+                              </i>
+                            );
+                          };
+
+                          const prow = (x) => {
+                            const h = H(x), k = K(x);
+                            const d = x.bh ? Math.round((h - x.bh) * 10) / 10 : null;
+                            return (
+                              <div className="cprow" key={x.id}>
+                                <div className="cpn">
+                                  <a href={xlsx("project", x.id)}
+                                     onClick={(e) => grabLink(e, xlsx("project", x.id), x.n)}>{x.n}</a>
+                                  <div className="cptags">
+                                    {x.s && <i className="cpt">{x.s}</i>}
+                                    {x.arch && <i className="cpt arch" title="Archived in Zoho Projects. The hours still count: the work was done.">archived</i>}
+                                    {badge(x)}
+                                  </div>
+                                </div>
+                                <div className="cpnum">{Math.round(h).toLocaleString("en-GB")}</div>
+                                <div className="cpnum sub">
+                                  {year === "all" && x.ph ? Math.round(x.ph).toLocaleString("en-GB") : "—"}
+                                </div>
+                                <div className="cpnum">{viewer ? "—" : eur(k)}</div>
+                                <div className="cpnum sub">{x.bh ? Math.round(x.bh).toLocaleString("en-GB") : "—"}</div>
+                                <div className={"cpnum " + (d == null ? "sub" : d > 0 ? "over" : "under")}>
+                                  {d == null ? "—" : (d > 0 ? "+" : "") + d.toLocaleString("en-GB")}
+                                </div>
                               </div>
                             );
-                          })()}
-                        </div>
+                          };
+
+                          return (
+                            <div className="cpanel">
+
+                              <div className="cpctx">
+                                <div><span className="cpl">Client</span><b>{r.c}</b></div>
+                                <div><span className="cpl">Billed through</span>
+                                  <b>{r.ba.length ? r.ba.join(", ") : "—"}</b></div>
+                                <div><span className="cpl">Client since</span>
+                                  <b className="num">{r.since || "—"}</b></div>
+                                <div><span className="cpl gl" title={GLOSS.ltv}>Generated all time</span>
+                                  <b className="num">{r.ltv == null ? "—" : eurK(r.ltv)}</b></div>
+                                <div><span className="cpl gl" title={GLOSS.share}>Share of the period</span>
+                                  <b className="num">{pct(wTot ? r.rev / wTot : 0)}</b></div>
+                                <div><span className="cpl">Invoices</span>
+                                  <b className="num">{r.n}{r.ob > 0 && <i className="cpo"> · {eurK(r.ob)} outstanding</i>}</b></div>
+
+                                <div className="cpsep" />
+
+                                <div><span className="cpl gl" title={GLOSS.rev}>
+                                  Revenue {year === "all" ? "all time" : year}</span>
+                                  <b className="num">{eurK(r.rev)}</b></div>
+                                <div><span className="cpl">Hours</span>
+                                  <b className="num">{r.hours == null ? "—" : Math.round(r.hours).toLocaleString("en-GB")}</b></div>
+                                {!viewer && (
+                                  <div><span className="cpl gl" title={GLOSS.cost}>Real cost</span>
+                                    <b className="num">{r.cost == null ? "—" : eur(r.cost)}</b></div>
+                                )}
+                                {!viewer && (
+                                  <div className={r.mgmtCost ? "cpmg" : ""}>
+                                    <span className="cpl gl" title={GLOSS.mgmt}>of which management</span>
+                                    <b className="num">
+                                      {r.mgmtCost ? eur(r.mgmtCost) : "—"}
+                                      {r.mgmtShare != null && r.mgmtCost > 0 &&
+                                        <i className="cpo"> · {pct(r.mgmtShare)}</i>}
+                                    </b>
+                                  </div>
+                                )}
+                                <div><span className="cpl gl" title={GLOSS.pct}>Margin</span>
+                                  <b className={"num big " + band(r.marginPct)}>
+                                    {r.marginPct == null ? "—" : pct(r.marginPct)}</b></div>
+                                <div><span className="cpl gl" title={GLOSS.ifix}>Internal fix</span>
+                                  <b className="num">{r.ihours ? Math.round(r.ihours).toLocaleString("en-GB") + " h" : "—"}</b></div>
+                              </div>
+
+                              <div className="cphead">
+                                <span>Deal and the projects that deliver it</span>
+                                <span>Hours</span>
+                                <span>from People</span>
+                                <span>{viewer ? "—" : "Internal cost"}</span>
+                                <span>Budget h</span>
+                                <span>Δ h</span>
+                              </div>
+
+                              {[...byDeal.values()].map((b) => {
+                                const one = b.ps.length === 1 && b.ps[0].dshare === 1;
+                                const amt = b.deal && b.deal.amount;
+                                const cost = b.ps.reduce((a, x) => a + K(x), 0);
+                                const mg = one && amt > 0 && !viewer ? (amt - cost) / amt : null;
+                                const open = b.ps.some((x) => (x.s || "").toLowerCase().indexOf("progress") >= 0);
+                                return (
+                                  <div className="cpdeal" key={b.id}>
+                                    <div className="cpdh">
+                                      <div className="cpn">
+                                        <a href={CRM_DEAL(b.id)} target="_blank" rel="noreferrer">
+                                          {b.deal ? b.deal.name : "deal " + b.id}</a>
+                                        {b.ps.length > 1 && (
+                                          <div className="cptags">
+                                            <i className="cpt warn" title="This deal is delivered by several projects, so its revenue belongs to all of them together. Splitting it across them would be invention.">
+                                              {b.ps.length} projects share it — no deal margin</i>
+                                          </div>
+                                        )}
+                                      </div>
+                                      <div className="cpamt">
+                                        <span className="cpl">Amount</span>
+                                        <b className="num">{amt ? eurK(amt) : "—"}</b>
+                                      </div>
+                                      <div className="cpmar">
+                                        {mg != null && (
+                                          <>
+                                            <span className="cpl">
+                                              Deal margin{open ? " · provisional" : ""}
+                                            </span>
+                                            <b className={"num " + band(mg)}>{pct(mg)}</b>
+                                          </>
+                                        )}
+                                      </div>
+                                    </div>
+                                    {b.ps.map(prow)}
+                                  </div>
+                                );
+                              })}
+
+                              {mgmt.length > 0 && (
+                                <div className="cpdeal mgmtblk">
+                                  <div className="cpdh">
+                                    <div className="cpn">
+                                      <b>Account management — no deal, no revenue</b>
+                                      <div className="cptags">
+                                        <i className="cpt mg">work on this client nobody invoices</i>
+                                      </div>
+                                    </div>
+                                    <div className="cpamt">
+                                      <span className="cpl">Hours</span>
+                                      <b className="num">{Math.round(mgmtH).toLocaleString("en-GB")}</b>
+                                    </div>
+                                    <div className="cpmar">
+                                      {!viewer && (
+                                        <>
+                                          <span className="cpl">Cost</span>
+                                          <b className="num">{eur(mgmtK)}</b>
+                                        </>
+                                      )}
+                                    </div>
+                                  </div>
+                                  {mgmt.map(prow)}
+                                </div>
+                              )}
+
+                              {noDeal && noDeal.ps.length > 0 && (
+                                <div className="cpdeal">
+                                  <div className="cpdh">
+                                    <div className="cpn">
+                                      <b>Projects with no deal linked</b>
+                                      <div className="cptags">
+                                        <i className="cpt warn">costed, revenue unknown</i>
+                                      </div>
+                                    </div>
+                                  </div>
+                                  {noDeal.ps.map(prow)}
+                                </div>
+                              )}
+
+                              {bare.length > 0 && (
+                                <div className="cpbare">
+                                  <span className="cpl">Deals with no project</span>
+                                  <div>
+                                    {bare.map((d) => (
+                                      <span key={d.id}>
+                                        <a href={CRM_DEAL(d.id)} target="_blank" rel="noreferrer">{d.name}</a>
+                                        <b className="num">{d.amount ? eurK(d.amount) : eurK(d.r)}</b>
+                                      </span>
+                                    ))}
+                                  </div>
+                                  <p>Licences and one-off items usually have nothing to deliver, so no project is expected.</p>
+                                </div>
+                              )}
+
+                            </div>
+                          );
+                        })()}
                       </td>
                     </tr>
                   ),
