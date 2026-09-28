@@ -86,8 +86,8 @@ function Gl({ t, children }) {
   );
 }
 
-const BUILD = "Sprints detail + saved snapshot · 28/09/2026";
-const VERSION = "0.7";
+const BUILD = "store detection · 28/09/2026";
+const VERSION = "0.7.2";
 
 // Oltre questo, la richiesta si interrompe e il file passa dal link diretto.
 const WAIT_MAX = 180000;
@@ -929,14 +929,28 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                       : "Built from Zoho on this page load."}>
                 {snap.source === "live" ? "Zoho live" : "snapshot"}
               </span>
-              {/* Chi guarda deve poter sapere se sta leggendo un dato di
-                  stanotte, e poterne chiedere uno di adesso senza cercare come.
-                  Rileggere da Zoho costa un paio di minuti: si dice. */}
-              <a className="refnow" href={rehref} title="Read everything from Zoho again. It takes a minute or two.">
+              {/* Chi guarda deve poter sapere da dove arriva quello che legge.
+                  Prima la riga compariva solo quando la pagina era servita dallo
+                  snapshot salvato: così "salvataggio non configurato", "appena
+                  costruito" e "configurato male" si presentavano tutti e tre
+                  come niente — nessuna riga, nessun errore, niente da capire. */}
+              <a className="refnow" href={rehref}
+                 title={(snap.from_store
+                   ? "Served from the snapshot saved at " +
+                     new Date(snap.from_store).toLocaleString("en-GB") + ", without asking Zoho."
+                   : snap.store && snap.store.ready
+                   ? "Built from Zoho on this page load, and saved for the next one."
+                   : "Built from Zoho on this page load. No snapshot store is configured, so every " +
+                     "open rebuilds everything.") +
+                   " Click to read everything from Zoho again — it takes a minute or two." +
+                   (snap.store && snap.store.write && snap.store.write.ok === false
+                     ? " The last save failed: " + snap.store.write.error : "")}>
                 {snap.from_store
-                  ? "from " + new Date(snap.from_store).toLocaleTimeString("en-GB",
+                  ? "saved " + new Date(snap.from_store).toLocaleTimeString("en-GB",
                       { hour: "2-digit", minute: "2-digit" }) + " · refresh"
-                  : "refresh"}
+                  : snap.store && snap.store.ready
+                  ? (snap.store.write && snap.store.write.ok === false ? "not saved · refresh" : "built now · refresh")
+                  : "not saved · refresh"}
               </a>
             </div>
           </div>
@@ -1031,23 +1045,51 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
               {!warning && !accrual && snap.accrual && snap.accrual.error && (
                 <p className="err">Licence periods: {snap.accrual.error}</p>
               )}
-              {!warning && snap.side_errors &&
-                Object.values(snap.side_errors).some(Boolean) && (
-                <p className="err">
-                  Some secondary figures were left out of this refresh so the margin could be
-                  computed first:{" "}
-                  {Object.entries(snap.side_errors).filter(([, v]) => v)
-                    .map(([k]) => k === "lifetime" ? "hours since start"
-                      : k === "sprints" ? "Zoho Sprints"
-                      : k === "archived" ? "archived projects"
-                      : "the CRMid field on projects").join(", ")}
-                  . Reload in a minute to bring them back.
-                </p>
-              )}
+
             </div>
           </div>
         )}
 
+
+        {/* Le fonti secondarie che non ce l'hanno fatta hanno un avviso loro.
+            Stavano dentro il riquadro dei costi, che compare solo quando i costi
+            mancano: se i costi arrivavano e Sprints no, la scheda spariva dalla
+            pagina e la spiegazione non compariva da nessuna parte. */}
+        {!warning && snap.side_errors &&
+          ["lifetime", "sprints", "archived"].some((k) => snap.side_errors[k]) && (
+          <div className="notice">
+            <div>
+              <strong>Some secondary figures were left out of this refresh</strong>
+              <p>
+                Zoho Analytics serves its queries through a queue, and the ones the margin needs go
+                first. When the time runs out before the rest, these are what stays behind:{" "}
+                <b>
+                  {["lifetime", "sprints", "archived"].filter((k) => snap.side_errors[k])
+                    .map((k) => k === "lifetime" ? "hours since start"
+                      : k === "sprints" ? "the Zoho Sprints tab"
+                      : "archived projects").join(", ")}
+                </b>
+                . Revenue, cost and every margin on this page are unaffected.
+                {snap.side_errors.sprints_from && (
+                  <> The Sprints tab is showing the figures saved at{" "}
+                    {new Date(snap.side_errors.sprints_from).toLocaleString("en-GB")}.</>
+                )}
+              </p>
+              <p>
+                <button className="xb" onClick={() => {
+                  try {
+                    const u = new URL(window.location.href);
+                    u.searchParams.set("refresh", "1");
+                    u.searchParams.set("r", String(Date.now()));
+                    window.location.replace(u.toString());
+                  } catch (e) { window.location.reload(); }
+                }}>
+                  Read from Zoho again
+                </button>
+              </p>
+            </div>
+          </div>
+        )}
 
         <MenuBar token={token} viewer={viewer} canUnlock={canUnlock} snap={snap} dl={dl}
                  missing={(snap.links && snap.links.crmid_missing) || 0}

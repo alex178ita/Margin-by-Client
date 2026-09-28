@@ -652,7 +652,8 @@ th.ifix, td.ifix { background: color-mix(in srgb, #7a5ea8 6%, transparent); colo
 .ilink:hover { color: var(--teal); }
 
 .refnow {
-  display: inline-block; margin-top: 4px; font-size: 10.5px; font-weight: 600;
+  /* Riga sua: accanto al badge finiva appiccicata, "ZOHO LIVErefresh". */
+  display: block; margin-top: 5px; font-size: 10.5px; font-weight: 600;
   color: #b8ccd4; text-decoration: underline dotted rgba(184,204,212,.6);
   text-underline-offset: 3px;
 }
