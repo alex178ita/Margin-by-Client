@@ -645,6 +645,12 @@ th.ifix, td.ifix { background: color-mix(in srgb, #7a5ea8 6%, transparent); colo
 
 /* Il selettore fra le due viste. Sta sopra i controlli perché cambia cosa si
    sta guardando, non come lo si filtra: le due cose non vanno mescolate. */
+.ilink {
+  background: none; border: 0; padding: 0; cursor: pointer; font: inherit;
+  color: inherit; text-decoration: underline dotted; text-underline-offset: 3px;
+}
+.ilink:hover { color: var(--teal); }
+
 .refnow {
   display: inline-block; margin-top: 4px; font-size: 10.5px; font-weight: 600;
   color: #b8ccd4; text-decoration: underline dotted rgba(184,204,212,.6);
@@ -733,7 +739,18 @@ th.has-gl { cursor: help; }
 .cpdh > .cpamt { grid-column: 2 / 4; }
 .cpdh > .cpmar { grid-column: 4 / 7; }
 .cpdh > .cpfacts { grid-column: 1 / -1; }
-.mgmtblk .cpdh { border-left-color: #c79a3e; background: #fefbf4; }
+/* Il blocco della gestione si vede da lontano.
+   Prima solo la sua intestazione era ambrata e le righe sotto restavano
+   bianche come tutte le altre: in fondo a un pannello con quattro deal, un
+   cliente come Givenchy — dove il 70% del costo è gestione — sembrava non
+   averne affatto. Ora è tutta la scheda a essere di un altro colore, come la
+   casella "of which management" in alto, che è il numero che porta qui. */
+.mgmtblk { border-color: #ecd9ae; background: #fffdf8; }
+.mgmtblk .cpdh { border-left-color: #c79a3e; background: #fdf4e3; }
+.mgmtblk .cphead { background: #fffaf0; border-top-color: #f2e6cc; color: #8a6410; }
+.mgmtblk .cprow { border-top-color: #f5ecd9; }
+.mgmtblk .cpn a { color: #7a5510; }
+.mgmtblk .cpdh b { color: #8a6410; }
 .cpamt, .cpmar { text-align: right; }
 .cpamt .cpl, .cpmar .cpl { margin-bottom: 1px; }
 .cpdh b.num { font-size: 14px; font-weight: 600; }
@@ -828,6 +845,7 @@ th.has-gl { cursor: help; }
   color: #7c8d95; font-weight: 600; margin-right: 5px;
 }
 .cpmar .cpo { display: block; margin-top: 2px; }
+.cpctx .cpo { display: block; margin-top: 2px; font-size: 10.5px; }
 .cpempty .cpn { font-size: 12px; color: #7c8d95; font-style: italic; }
 
 @media (max-width: 1100px) {

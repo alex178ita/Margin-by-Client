@@ -86,8 +86,8 @@ function Gl({ t, children }) {
   );
 }
 
-const BUILD = "saved snapshot + deal type · 28/09/2026";
-const VERSION = "0.6";
+const BUILD = "Sprints detail + saved snapshot · 28/09/2026";
+const VERSION = "0.7";
 
 // Oltre questo, la richiesta si interrompe e il file passa dal link diretto.
 const WAIT_MAX = 180000;
@@ -587,7 +587,11 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
       const hours = year === "all" ? (p.hours || 0)
         : (p.cy && p.cy[year] ? p.cy[year].hours : 0);
       const e = m[p.c] || (m[p.c] = { cost: 0, hours: 0, n: 0 });
-      e.cost += cost || 0; e.hours += hours || 0; e.n += 1;
+      e.cost += cost || 0; e.hours += hours || 0;
+      // Si contano solo quelli che nel periodo hanno lavorato: il pannello
+      // sotto nasconde gli altri, e un conteggio che non torna con l'elenco
+      // che porta con sé è un invito a cercare un progetto che non c'è.
+      if ((hours || 0) > 0 || (cost || 0) > 0) e.n += 1;
     }
     return m;
   }, [snap, year]);
@@ -638,6 +642,22 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
     });
     return out;
   }, [snap, year, iq, isort]);
+
+  /**
+   * Quanti progetti interni il filtro anno sta tenendo fuori.
+   *
+   * La tabella mostra solo chi ha lavorato nel periodo scelto, il che è giusto,
+   * ma da quando la pagina si apre sull'anno in corso un progetto chiuso l'anno
+   * prima sparisce senza dire niente — e chi lo cerca conclude che l'app non lo
+   * vede, invece che non lo sta mostrando.
+   */
+  const iHidden = useMemo(() => {
+    if (year === "all") return 0;
+    const shown = new Set(internalRows.map((r) => r.id));
+    return (snap.projects || []).filter((p) =>
+      (p.k === "internal" || p.k === "presale" || (p.k === "client_mgmt" && !p.c)) &&
+      !shown.has(p.id) && ((p.hours || 0) > 0 || (p.ih || 0) > 0)).length;
+  }, [snap, year, internalRows]);
 
   const iTot = useMemo(() => ({
     hours: internalRows.reduce((s2, r) => s2 + r.h, 0),
@@ -711,6 +731,7 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
           icost, ihours,
           mgmtCost: (mgmtByClient[c.c] || {}).cost || 0,
           mgmtHours: (mgmtByClient[c.c] || {}).hours || 0,
+          mgmtN: (mgmtByClient[c.c] || {}).n || 0,
           // Che fetta del costo di questo cliente è lavoro non venduto.
           mgmtShare: cost ? ((mgmtByClient[c.c] || {}).cost || 0) / cost : null,
           // Le stesse due percentuali con dentro anche il debug interno.
@@ -1469,9 +1490,30 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                                    onClick={(e) => grabLink(e, xlsx("project", x.id), x.n)}>↓</a>
                               </span>
                               <div className="cptags">
+                                {x.k === "client_mgmt" && (
+                                  <i className="cpt mg" title="A project whose name starts with &ldquo;_&rdquo;: work on this client that nobody invoices — roadmap, coordination, change requests. It has no deal and no revenue, and it counts in the client's cost because it is part of serving them.">
+                                    management
+                                  </i>
+                                )}
                                 {kindTag(info)}
-                                {x.s && <i className="cpt">{x.s}</i>}
-                                {x.arch && <i className="cpt arch" title="Archived in Zoho Projects. The hours still count: the work was done.">archived</i>}
+                                {/* Lo stato non si mostra sugli archiviati.
+                                    Per un progetto archiviato l'unica fonte che
+                                    resta è Zoho People, che tiene una copia sua
+                                    dello stato e non viene avvisata quando il
+                                    progetto viene archiviato in Projects: la
+                                    sua copia è ferma a com'era quel giorno.
+                                    Così si leggeva "In progress" accanto ad
+                                    "archived", e una delle due era per forza
+                                    falsa — quella di People. */}
+                                {x.s && !x.arch && <i className="cpt">{x.s}</i>}
+                                {x.arch && (
+                                  <i className="cpt arch"
+                                     title={"Zoho Projects no longer lists this project among the active ones: it has been archived. " +
+                                       "The hours still count — the work was done." +
+                                       (x.s ? " Zoho People still records it as \u201c" + x.s + "\u201d: People keeps its own copy of the status and is never told when a project is archived, so that value is frozen at the day it was." : "")}>
+                                    archived
+                                  </i>
+                                )}
                                 {badge(x)}
                               </div>
                             </div>
@@ -1573,6 +1615,11 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                                       {r.mgmtShare != null && r.mgmtCost > 0 &&
                                         <i className="cpo"> · {pct(r.mgmtShare)}</i>}
                                     </b>
+                                    {r.mgmtN > 0 && (
+                                      <i className="cpo">
+                                        {r.mgmtN} project{r.mgmtN > 1 ? "s" : ""}, in amber below
+                                      </i>
+                                    )}
                                   </div>
                                 )}
                                 <div><Gl t={GLOSS.pct}>Margin</Gl>
@@ -1654,7 +1701,10 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                                     <div className="cpn">
                                       <b>Account management — no deal, no revenue</b>
                                       <div className="cptags">
-                                        <i className="cpt mg">work on this client nobody invoices</i>
+                                        <i className="cpt mg">
+                                          {mgmt.length} project{mgmt.length > 1 ? "s" : ""} starting
+                                          with &ldquo;_&rdquo; · work nobody invoices
+                                        </i>
                                       </div>
                                     </div>
                                     <div className="cpamt">
@@ -1664,8 +1714,14 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                                     <div className="cpmar">
                                       {!viewer && (
                                         <>
-                                          <span className="cpl">Cost</span>
+                                          <Gl t={GLOSS.mgmt}>Cost · share of this client</Gl>
                                           <b className="num">{eur(mgmtK)}</b>
+                                          {/* Lo stesso numero della casella gialla in alto: se
+                                              non combaciano, uno dei due sta guardando un
+                                              periodo diverso, e va saputo subito. */}
+                                          <i className="cpo">
+                                            {r.cost ? pct(mgmtK / r.cost) + " of the cost" : "—"}
+                                          </i>
                                         </>
                                       )}
                                     </div>
@@ -1729,6 +1785,14 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
               <div className="v num">{Math.round(iTot.hours).toLocaleString("en-GB")}</div>
               <div className="s">
                 {internalRows.length} projects · {year === "all" ? (snap.min_year || 2025) + " on" : year}
+                {/* Il filtro anno nasconde i progetti senza ore nel periodo, e
+                    un progetto che c'è ma non si vede fa cercare un guasto dove
+                    non c'è: il conto di quanti sono lo dice. */}
+                {iHidden > 0 && (
+                  <> · <button type="button" className="ilink" onClick={() => setYear("all")}>
+                    {iHidden} more with no hours in {year}
+                  </button></>
+                )}
               </div>
             </div>
             {!viewer && (
@@ -1791,7 +1855,14 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                            aria-label={"Download the detail of " + p.n}
                            onClick={(e) => grabLink(e, xlsx("project", p.id), p.n)}>↓</a>
                       </div>
-                      {p.s && <div className="via">{p.s}</div>}
+                      {p.s && !p.arch && <div className="via">{p.s}</div>}
+                      {p.arch && (
+                        <div className="via"
+                             title={"Zoho Projects no longer lists this project among the active ones." +
+                               (p.s ? " Zoho People still records it as \u201c" + p.s + "\u201d, frozen at the day it was archived." : "")}>
+                          archived
+                        </div>
+                      )}
                     </td>
                     <td>
                       <i className={"tag " + (p.k === "presale" ? "warn" : p.k === "client_mgmt" ? "lic" : "mod")}>
@@ -1895,14 +1966,26 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                     {year === "all" ? "Hours " + (snap.min_year || 2025) + " on" : "Hours in window"}
                   </th>
                   <th className="r">Hours since start</th>
-                  <th className="r">Already in Projects</th>
+                  <th className="r">Also in Zoho Projects</th>
                   <th className="r">Logs</th>
                 </tr>
               </thead>
               <tbody>
                 {sprintRows.map((p) => (
                   <tr key={p.id}>
-                    <td><div className="cli">{p.name}</div></td>
+                    <td>
+                      <div className="cli">
+                        <span>{p.name}</span>
+                        {/* Il nome non è un link: un progetto di Sprints non ha
+                            una pagina in Zoho Projects. La freccia sì — scarica
+                            chi ha registrato quelle ore, che finora non si
+                            poteva sapere da nessuna parte. */}
+                        <a className="cpdl" href={xlsx("sprints", p.id)}
+                           title="Download who logged these hours, when, and what they cost"
+                           aria-label={"Download the detail of " + p.name}
+                           onClick={(e) => grabLink(e, xlsx("sprints", p.id), p.name)}>↓</a>
+                      </div>
+                    </td>
                     <td>{p.status ? <i className="tag mod">{p.status}</i> : "—"}</td>
                     <td className="r num">{Math.round(p.h).toLocaleString("en-GB")}</td>
                     <td className="r num dim">
@@ -1910,7 +1993,7 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                     </td>
                     <td className="r num dim"
                         title={p.zpid
-                          ? "This Sprints project is linked to a Zoho Projects project, so the hours shown here may already be counted there."
+                          ? "This Sprints project is linked to a Zoho Projects project, so Zoho mirrors its time logs across and you will find these hours on the Projects side too."
                           : "Not linked to any Zoho Projects project, so none of these hours exist on the Projects side."}>
                       {p.alreadyInProjects
                         ? Math.round(p.alreadyInProjects).toLocaleString("en-GB")
@@ -1927,10 +2010,23 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
           </div>
 
           <p className="tablenote">
-            <b>Already in Projects</b> is the guard against double counting: it is the part of each
-            project&apos;s hours that Zoho&apos;s own bridge has copied into Zoho Projects, where the
-            rest of this dashboard would already have seen them. Everywhere it reads a dash, none of
-            those hours exist anywhere else.
+            The arrow beside a project name downloads who logged its hours, when, and what they
+            cost — priced from the payroll like every other hour on this dashboard, since Sprints
+            carries no rate of its own.
+          </p>
+          <p className="tablenote">
+            <b>Also in Zoho Projects</b> answers one question: would you find these hours on the
+            Projects side too? Zoho can link a Sprints project to a Projects project and mirror the
+            time logs across; on this portal that link is all but switched off — 4 hours out of
+            nearly six thousand. Where the column reads a dash, those hours exist nowhere but here,
+            so a Projects report will never show them.
+          </p>
+          <p className="tablenote">
+            It is not a correction to anything on this page: no figure here adds Sprints to Projects,
+            and no client margin contains Sprints at all. It matters to a person cross-checking with
+            a Zoho Projects report, and it would matter a great deal if a Sprints project were ever
+            linked to a <i>client</i> project — then its hours would reach a margin, and this column
+            is where that would show.
           </p>
         </>
         )}

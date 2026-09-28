@@ -2,7 +2,7 @@ import JSZip from "jszip";
 import { loadDataset, exportTargets } from "../../../lib/dataset";
 import { fetchRatePlan } from "../../../lib/zoho";
 import { tokenOk, roleFromCookies, FULL_ONLY_EXPORTS } from "../../../lib/access";
-import { dealWorkbook, projectWorkbook, clientWorkbook, missingLinkWorkbook, missingRatesWorkbook, ratePlanWorkbook, dashboardWorkbook, fileName } from "../../../lib/xlsx";
+import { dealWorkbook, projectWorkbook, clientWorkbook, missingLinkWorkbook, missingRatesWorkbook, ratePlanWorkbook, dashboardWorkbook, sprintsWorkbook, fileName } from "../../../lib/xlsx";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -13,6 +13,7 @@ export const runtime = "nodejs";
  *   /api/xlsx?k=<token>&type=deal&id=<dealId>
  *   /api/xlsx?k=<token>&type=project&id=<projectId>
  *   /api/xlsx?k=<token>&type=client&id=<client name>
+ *   /api/xlsx?k=<token>&type=sprints&id=sprints:<sprints project id>
  *   /api/xlsx?k=<token>&type=dashboard&year=..  -> la dashboard come la vedi
  *   /api/xlsx?k=<token>&type=missing            -> progetti senza CRMid
  *   /api/xlsx?k=<token>&type=rates              -> ore a tariffa zero
@@ -89,6 +90,19 @@ export async function GET(request) {
       });
     }
 
+    // Un progetto di Sprints non esiste in Zoho Projects e non passa dal
+    // dataset: il file se lo costruisce da sé, con due query sue.
+    if (type === "sprints") {
+      const wb = await sprintsWorkbook(ctx, id, role);
+      return new Response(await wb.xlsx.writeBuffer(), {
+        headers: {
+          "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          "Content-Disposition": `attachment; filename="${fileName("sprints", id.replace(/^sprints:/, ""))}"`,
+          "Cache-Control": "no-store",
+        },
+      });
+    }
+
     if (type === "deal" || type === "project" || type === "client") {
       const { wb, name } = await one(ctx, type, id, role);
       const buf = await wb.xlsx.writeBuffer();
@@ -127,7 +141,7 @@ export async function GET(request) {
 
     return Response.json({
       ok: false,
-      error: "unknown type: use deal, project, client, deals, projects, clients or all",
+      error: "unknown type: use deal, project, client, sprints, deals, projects, clients or all",
     }, { status: 400 });
   } catch (e) {
     return Response.json({ ok: false, error: e.message }, { status: 500 });
