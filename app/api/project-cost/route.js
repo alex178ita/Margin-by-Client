@@ -1,170 +1,103 @@
-import { fetchProjectCosts, RATE_YEARS, MIN_YEAR, timeLogColumns, parseCsv, num, runCostQueryRaw, INTERNAL_SQL } from "../../../lib/zoho";
+import { buildSnapshot, RATE_YEARS } from "../../../lib/zoho";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 /**
- * Costo di un singolo progetto per l'app Project Summary (pulsante nei deal CRM).
- *   GET /api/project-cost?projectId=<id progetto Zoho Projects>
- *   Authorization: Bearer <PROJECT_SUMMARY_API_KEY>
+ * Le ore e il costo di un progetto, per l'app Project Summary.
  *
- * Stesse regole della dashboard: tariffa dei cedolini del MESE del time log,
- * ore della tasklist "_INTERNAL DEBUG & FIX" fuori dal costo e riportate a parte,
- * ore senza tariffa escluse e segnalate. I costi di tutti i progetti vengono
- * letti con una sola query Analytics e tenuti in memoria dieci minuti.
- */
-let CACHE = null;
-const TTL = 10 * 60 * 1000;
-
-async function costs() {
-  if (CACHE && CACHE.at > Date.now() - TTL) return CACHE;
-  const [map, hours] = await Promise.all([fetchProjectCosts(), hoursByBillable()]);
-  CACHE = { at: Date.now(), map, hours };
-  return CACHE;
-}
-
-/**
- * Ore per progetto divise fra fatturabili e non fatturabili. Il campo actual_hours del
- * budget di Zoho Projects conta solo le ore Billable: qui serve il totale, con il dettaglio.
- */
-async function hoursByBillable() {
-  const c = await timeLogColumns();
-  const sql =
-    `SELECT CONCAT("${c.project}",'') AS pid, "Status" AS st, SUM("${c.hours}")*1 AS hrs ` +
-    `FROM "Time Logs (Zoho Projects)" WHERE YEAR("${c.date}") >= ${MIN_YEAR()} ` +
-    `GROUP BY "${c.project}", "Status"`;
-  const out = {};
-  for (const r of parseCsv(await runCostQueryRaw(sql))) {
-    const pid = String(r.pid || "").trim();
-    if (!pid) continue;
-    const billable = !/non/i.test(String(r.st || ""));
-    const e = out[pid] || (out[pid] = { billable: 0, nonBillable: 0 });
-    if (billable) e.billable += num(r.hrs);
-    else e.nonBillable += num(r.hrs);
-  }
-  return out;
-}
-
-/**
- * I mesi in cui ogni progetto ha dei time log, es. { "913050000012": ["2025-03","2026-01"] }.
+ * Perché esiste. Project Summary mostra le ore di un progetto prendendole da
+ * `budget_info.actual_hours` di Zoho Projects — cioè quello che Projects sa.
+ * Da quando le ore registrate in Zoho People entrano nel conto, quel numero è
+ * sistematicamente più basso del vero, e di parecchio su alcuni progetti: la
+ * spinta da People a Projects viene rifiutata ogni volta che il task non
+ * esiste, è chiuso, è stato spostato o non ha un assegnatario, e quelle ore
+ * restano di là per sempre.
  *
- * L'API di Zoho Projects legge i time log un mese alla volta e non ha un endpoint di
- * portale: senza questo elenco il clean-up dovrebbe chiedere tutti i mesi dal 2025 a oggi
- * per ogni progetto. Qui una sola query Analytics dice quali mesi esistono davvero.
- */
-async function monthsWithLogs() {
-  const c = await timeLogColumns();
-  const sql =
-    `SELECT CONCAT("${c.project}",'') AS pid, YEAR("${c.date}") AS y, MONTH("${c.date}") AS m ` +
-    `FROM "Time Logs (Zoho Projects)" WHERE YEAR("${c.date}") >= ${MIN_YEAR()} ` +
-    `GROUP BY "${c.project}", YEAR("${c.date}"), MONTH("${c.date}")`;
-  const out = {};
-  for (const r of parseCsv(await runCostQueryRaw(sql))) {
-    const pid = String(r.pid || "").trim();
-    const y = num(r.y), m = num(r.m);
-    if (!pid || !y || !m) continue;
-    (out[pid] || (out[pid] = [])).push(`${y}-${String(m).padStart(2, "0")}`);
-  }
-  for (const k of Object.keys(out)) out[k] = [...new Set(out[k])].sort();
-  return out;
-}
-
-/**
- * I task della tasklist "_INTERNAL DEBUG & FIX", per progetto:
- *   { "913050000012": ["taskid", "taskid", ...] }
+ * Il totale giusto lo conosce già questa dashboard, perché è la stessa cifra su
+ * cui calcola i margini. Invece di rifare in Project Summary la lettura di
+ * People — con la sua chiave di deduplicazione, le sue tariffe e la sua coda su
+ * Analytics — la si serve da qui. Una fonte sola: se un giorno il conto cambia,
+ * cambia in tutti e due i posti nello stesso momento.
  *
- * Servono al clean-up di Project Summary: quelle ore restano Non Billable anche sui
- * progetti cliente. Il riconoscimento della tasklist è lo stesso del calcolo del costo
- * (INTERNAL_SQL), tollerante su maiuscole, spazi e trattino basso.
+ * `loggedMinutes` è il totale completo: Projects più quello che si è recuperato
+ * da People. Chi lo legge non deve sapere da dove viene ciascun pezzo, e il
+ * campo `peopleMinutes` c'è solo per poterlo verificare quando un numero non
+ * torna — non per essere mostrato.
+ *
+ * Non tocca Zoho: legge lo snapshot, che il cron riempie la mattina.
  */
-async function internalTasks() {
-  const c = await timeLogColumns();
-  const sql =
-    `SELECT CONCAT(L."${c.project}",'') AS pid, CONCAT(L."Task ID",'') AS tid ` +
-    `FROM "Time Logs (Zoho Projects)" L ` +
-    `LEFT JOIN "Tasks (Zoho Projects)" T ON CONCAT(T."Task ID",'') = CONCAT(L."Task ID",'') ` +
-    `WHERE YEAR(L."${c.date}") >= ${MIN_YEAR()} AND ${INTERNAL_SQL} = 1 ` +
-    `GROUP BY L."${c.project}", L."Task ID"`;
-  const out = {};
-  for (const r of parseCsv(await runCostQueryRaw(sql))) {
-    const pid = String(r.pid || "").trim();
-    const tid = String(r.tid || "").trim();
-    if (!pid || !tid) continue;
-    (out[pid] || (out[pid] = [])).push(tid);
-  }
-  for (const k of Object.keys(out)) out[k] = [...new Set(out[k])];
-  return out;
-}
-
-let INTERNAL = null;
-async function internalCached() {
-  if (INTERNAL && INTERNAL.at > Date.now() - TTL) return INTERNAL;
-  INTERNAL = { at: Date.now(), map: await internalTasks() };
-  return INTERNAL;
-}
-
-let MONTHS = null;
-async function monthsCached() {
-  if (MONTHS && MONTHS.at > Date.now() - TTL) return MONTHS;
-  MONTHS = { at: Date.now(), map: await monthsWithLogs() };
-  return MONTHS;
-}
-
-const round = (n) => Math.round((n || 0) * 100) / 100;
-
 export async function GET(request) {
-  const url0 = new URL(request.url);
-  const all = url0.searchParams.get("all");
-  if (all === "hours" || all === "months" || all === "internal") {
-    const key0 = (process.env.PROJECT_SUMMARY_API_KEY || "").trim();
-    if (!key0 || (request.headers.get("authorization") || "") !== `Bearer ${key0}`) {
-      return Response.json({ ok: false, error: "unauthorised" }, { status: 401 });
-    }
-    try {
-      if (all === "months") {
-        const { at, map } = await monthsCached();
-        return Response.json({ ok: true, asOf: new Date(at).toISOString(), from: MIN_YEAR(), months: map });
-      }
-      if (all === "internal") {
-        const { at, map } = await internalCached();
-        return Response.json({ ok: true, asOf: new Date(at).toISOString(), from: MIN_YEAR(), internalTasks: map });
-      }
-      const { at, hours } = await costs();
-      return Response.json({ ok: true, asOf: new Date(at).toISOString(), from: MIN_YEAR(), hours });
-    } catch (e) {
-      return Response.json({ ok: false, error: e.message }, { status: 500 });
-    }
+  const url = new URL(request.url);
+
+  /**
+   * Chiave propria, non quella della dashboard.
+   *
+   * Questa risposta contiene un costo, quindi non può stare dietro al token
+   * della pagina, che gira negli indirizzi dei Web Tab. `PROJECT_SUMMARY_API_KEY`
+   * è condivisa solo fra le due app, in un header e mai in un URL.
+   */
+  const secret = process.env.PROJECT_SUMMARY_API_KEY;
+  if (!secret) {
+    return Response.json(
+      { ok: false, error: "PROJECT_SUMMARY_API_KEY is not set on this deployment" },
+      { status: 503 });
+  }
+  const auth = request.headers.get("authorization") || "";
+  const given = auth.replace(/^Bearer\s+/i, "").trim() || url.searchParams.get("k") || "";
+  if (given !== secret) {
+    return Response.json({ ok: false, error: "not authorised" }, { status: 401 });
   }
 
-  const key = (process.env.PROJECT_SUMMARY_API_KEY || "").trim();
-  const auth = request.headers.get("authorization") || "";
-  if (!key || auth !== `Bearer ${key}`) {
-    return Response.json({ ok: false, error: "unauthorised" }, { status: 401 });
+  const projectId = String(url.searchParams.get("projectId") || "").trim();
+  if (!projectId) {
+    return Response.json({ ok: false, error: "projectId is required" }, { status: 400 });
   }
-  const projectId = (new URL(request.url).searchParams.get("projectId") || "").replace(/\D/g, "");
-  if (!projectId) return Response.json({ ok: false, error: "projectId missing" }, { status: 400 });
 
   try {
-    const { at, map, hours } = await costs();
-    const e = map[projectId];
-    if (!e) return Response.json({ ok: false, error: "no time logs for this project" }, { status: 404 });
+    const snap = await buildSnapshot();
+    const p = (snap.projects || []).find((x) => String(x.id) === projectId);
+    if (!p) {
+      // 404 e non 200 con zeri: un progetto che la dashboard non conosce è una
+      // cosa diversa da un progetto senza ore, e chi chiama deve poterle
+      // distinguere — altrimenti mostra "0 ore" su un progetto che ne ha.
+      return Response.json({
+        ok: false,
+        error: "project not in the snapshot",
+        projectId,
+        asOf: (snap.generated_at || "").slice(0, 10),
+      }, { status: 404 });
+    }
 
-    const year = String(new Date().getUTCFullYear());
+    const min = (h) => Math.round((Number(h) || 0) * 60);
+    const eur = (n) => Math.round((Number(n) || 0) * 100) / 100;
+
     return Response.json({
       ok: true,
       projectId,
-      totalCost: round(e.cost),
-      loggedMinutes: Math.round((e.hours || 0) * 60),
-      billableMinutes: Math.round(((hours[projectId] || {}).billable || 0) * 60),
-      nonBillableMinutes: Math.round(((hours[projectId] || {}).nonBillable || 0) * 60),
-      minutesWithoutRate: Math.round((e.unrated || 0) * 60),
-      debugFixCost: round(e.icost),
-      debugFixMinutes: Math.round((e.ihours || 0) * 60),
-      costByYear: Object.fromEntries(Object.entries(e.byYear || {}).map(([y, b]) => [y, round(b.cost)])),
-      ratesStatus: (RATE_YEARS[year] && RATE_YEARS[year].label) || null,
-      asOf: new Date(at).toISOString(),
-    });
-  } catch (err) {
-    return Response.json({ ok: false, error: err.message }, { status: 500 });
+      projectName: p.n,
+      // Costo del lavoro sul progetto, al netto del debug interno — la stessa
+      // regola con cui la dashboard calcola i margini.
+      totalCost: eur(p.cost),
+      // Il totale vero: Projects più le ore recuperate da Zoho People.
+      loggedMinutes: min(p.hours),
+      // Solo per verifica, non per essere mostrato.
+      peopleMinutes: min(p.ph),
+      // Ore registrate da chi non ha una tariffa oraria: costano zero qui, e il
+      // totale è più basso del vero di altrettanto.
+      minutesWithoutRate: min(p.unrated),
+      // Il debug interno resta fuori dal costo e si dichiara a parte, come sulla
+      // dashboard: è un costo nostro, non del cliente.
+      debugFixCost: eur(p.ic),
+      debugFixMinutes: min(p.ih),
+      costByYear: Object.fromEntries(
+        Object.entries(p.cy || {}).map(([y, b]) => [y, eur(b.cost)])),
+      ratesStatus: (RATE_YEARS[String(new Date().getUTCFullYear())] || {}).label || null,
+      // Quando la dashboard ha letto Zoho l'ultima volta. Project Summary può
+      // dirlo a chi guarda invece di far credere che sia di adesso.
+      asOf: (snap.generated_at || "").slice(0, 10),
+    }, { headers: { "Cache-Control": "no-store" } });
+  } catch (e) {
+    return Response.json({ ok: false, error: e.message }, { status: 500 });
   }
 }
