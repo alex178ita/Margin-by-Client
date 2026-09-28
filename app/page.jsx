@@ -4,6 +4,15 @@ import { buildSnapshot } from "../lib/zoho";
 import { tokenOk, roleFromCookies, redact, unlockAvailable } from "../lib/access";
 
 export const dynamic = "force-dynamic";
+/**
+ * Cinque minuti, come ogni endpoint di questa app.
+ *
+ * Era l'unica funzione senza: tutte le route sotto /api dichiarano 300, la
+ * pagina no, e girava con il limite predefinito della piattaforma mentre il
+ * codice dietro si dà un budget di 260 secondi per interrogare Analytics. Due
+ * numeri che non si parlano, e chi si ferma per primo decide il risultato.
+ */
+export const maxDuration = 300;
 export const fetchCache = "force-no-store";
 export const revalidate = 0;
 

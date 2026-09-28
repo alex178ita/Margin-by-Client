@@ -70,8 +70,8 @@ const Gl = ({ t, children }) => (
   </span>
 );
 
-const BUILD = "deal links, Sprints tab, People column · 28/09/2026";
-const VERSION = "0.5";
+const BUILD = "budget order + reload · 28/09/2026";
+const VERSION = "0.5.1";
 
 // Oltre questo, la richiesta si interrompe e il file passa dal link diretto.
 const WAIT_MAX = 180000;
@@ -932,7 +932,18 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                   che dentro il Web Tab del CRM per giunta non ricarica l'iframe. */}
               {!hasCost && !warning && (
                 <p>
-                  <button className="xb" onClick={() => window.location.reload()}>
+                  {/* Ricaricare deve rileggere davvero. Il pulsante chiamava
+                      window.location.reload(), che l'iframe del Web Tab serve
+                      volentieri dalla propria cache: stessa pagina, stesso
+                      avviso, e l'impressione che non facesse niente. Con un
+                      parametro nuovo nell'indirizzo la richiesta è nuova. */}
+                  <button className="xb" onClick={() => {
+                    try {
+                      const u = new URL(window.location.href);
+                      u.searchParams.set("r", String(Date.now()));
+                      window.location.replace(u.toString());
+                    } catch (e) { window.location.reload(); }
+                  }}>
                     Reload now
                   </button>
                 </p>
@@ -950,6 +961,19 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
               )}
               {!warning && !accrual && snap.accrual && snap.accrual.error && (
                 <p className="err">Licence periods: {snap.accrual.error}</p>
+              )}
+              {!warning && snap.side_errors &&
+                Object.values(snap.side_errors).some(Boolean) && (
+                <p className="err">
+                  Some secondary figures were left out of this refresh so the margin could be
+                  computed first:{" "}
+                  {Object.entries(snap.side_errors).filter(([, v]) => v)
+                    .map(([k]) => k === "lifetime" ? "hours since start"
+                      : k === "sprints" ? "Zoho Sprints"
+                      : k === "archived" ? "archived projects"
+                      : "the CRMid field on projects").join(", ")}
+                  . Reload in a minute to bring them back.
+                </p>
               )}
             </div>
           </div>
