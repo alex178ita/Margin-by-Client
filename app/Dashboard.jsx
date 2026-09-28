@@ -5,8 +5,52 @@ import { LOGO_DATA_URI } from "../lib/logo";
 
 // Marcatore di build. Serve a una cosa sola: guardare la pagina e sapere quale
 // versione sta girando davvero, senza doverlo dedurre dal comportamento.
-const BUILD = "people-union · 27/09/2026";
-const VERSION = "0.2";
+/**
+ * Cosa vuol dire ogni etichetta, in un posto solo.
+ *
+ * Nasce da una domanda a cui non si sapeva rispondere guardando lo schermo:
+ * "Margin all time" di quale periodo parla? Di tutta la finestra della
+ * dashboard, non dell'anno scelto e nemmeno di sempre. Se chi ha commissionato
+ * la pagina deve chiederlo, la pagina non lo sta dicendo.
+ *
+ * Stanno qui e non accanto a ogni colonna perché le stesse definizioni servono
+ * alla tabella, al pannello di dettaglio e ai file: tre copie dello stesso testo
+ * divergono al primo ritocco, e una dashboard che si contraddice è peggio di una
+ * che tace.
+ */
+const GLOSS = {
+  rev: "Invoiced in Zoho Books, net of VAT and of credit notes. Follows the year " +
+       "selector: with a year chosen it is the revenue earned over that year.",
+  pct: "Revenue minus real cost, over revenue. Both sides on the year you have selected.",
+  amt: "The CRM Amount of the deals this client brings into the dashboard — what was sold, " +
+       "not what was invoiced. Not the same as Lifetime value, which counts every won deal.",
+  pctamt: "Contract value minus cost, over contract value. Neither side follows the year " +
+          "selector: it is the full contract against the cost recorded since " +
+          "the dashboard's first year. A deal still being delivered therefore reads better " +
+          "than it will end up.",
+  cost: "Hours logged, each at that person's own hourly cost from the payroll, in the month " +
+        "the hour was logged. Never a flat rate. Before server and infrastructure costs.",
+  mgmt: "How much of the cost above comes from this client's management projects — the ones " +
+        "whose name starts with \"_\". Work on the account that nobody invoices. It belongs " +
+        "in the cost because it is part of serving this client.",
+  hrs: "Hours logged on this client's projects in the selected period.",
+  margin: "Revenue minus real cost, in euros, for the selected period.",
+  pctall: "Not all time: the whole period this dashboard covers, from its first year to today. " +
+          "Shown beside the selected year so a weak year on a solid client is not read as a " +
+          "collapse, or the reverse.",
+  ifix: "Hours logged on the internal fix tasklist. They are a cost of ours, not of the " +
+        "client's, so they stay out of this client's margin and are counted here instead.",
+  ltv: "Every deal won for this client in the CRM, whatever the year and whether or not it " +
+       "appears in this dashboard. There is no cost against it, so it is not a margin.",
+  inv: "How many invoices make up the revenue.",
+  open: "Invoiced and not yet paid.",
+  prj: "How many Zoho Projects projects carry this client's cost.",
+  share: "This client's revenue over the revenue of the rows currently on screen. The search " +
+         "box and the Execus toggle change the denominator.",
+};
+
+const BUILD = "archived + sprints · 28/09/2026";
+const VERSION = "0.3";
 
 // Oltre questo, la richiesta si interrompe e il file passa dal link diretto.
 const WAIT_MAX = 180000;
@@ -421,22 +465,43 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
    */
   const internalRows = useMemo(() => {
     const query = iq.trim().toLowerCase();
-    const out = (snap.projects || [])
+    let out = (snap.projects || [])
       .filter((p) => p.k === "internal" || p.k === "presale")
       .map((p) => {
         const cy = p.cy && p.cy[year];
         const hours = year === "all" ? (p.hours || 0) : (cy ? cy.hours || 0 : 0);
         const cost = year === "all" ? (p.cost || 0) : (cy ? cy.cost || 0 : 0);
         const ih = year === "all" ? (p.ih || 0) : (cy ? cy.ih || 0 : 0);
-        return { ...p, h: hours, cst: cost, ifix: ih };
+        return { ...p, h: hours, cst: cost, ifix: ih, src: "projects" };
       })
-      .filter((p) => p.h > 0 || p.ifix > 0)
-      .filter((p) => !query || (p.n || "").toLowerCase().includes(query));
+      .filter((p) => p.h > 0 || p.ifix > 0);
+
+    /**
+     * Zoho Sprints è la terza fonte, e per la vista interna è la più pesante:
+     * lo sviluppo registra lì, e quelle ore non passano né da Projects né da
+     * People. Entrano solo qui, mai nei margini dei clienti, perché sono
+     * sviluppo di prodotto e non lavoro venduto a qualcuno.
+     */
+    const sp = (snap.sprints && snap.sprints.projects) || [];
+    for (const r of sp) {
+      if (!r.hours && !r.lifetime) continue;
+      out.push({
+        id: r.id, n: r.name, k: "internal", s: r.status,
+        h: r.hours || 0, hall: r.lifetime || null,
+        // Sprints non porta una tariffa per persona, e parte di chi ci registra
+        // non è a libro paga: un costo qui sarebbe inventato.
+        cst: null, ifix: 0, src: "sprints",
+        zpid: r.zpid || null,
+      });
+    }
+
+    out = out.filter((p) => !query || (p.n || "").toLowerCase().includes(query));
 
     const val = (r) =>
       isort.key === "name" ? (r.n || "").toLowerCase()
-      : isort.key === "kind" ? r.k
-      : isort.key === "cost" ? r.cst
+      : isort.key === "kind" ? r.src
+      : isort.key === "cost" ? (r.cst == null ? -Infinity : r.cst)
+      : isort.key === "hall" ? (r.hall || 0)
       : isort.key === "ifix" ? r.ifix
       : r.h;
     out.sort((a, b) => {
@@ -449,7 +514,7 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
 
   const iTot = useMemo(() => ({
     hours: internalRows.reduce((s2, r) => s2 + r.h, 0),
-    cost: internalRows.reduce((s2, r) => s2 + r.cst, 0),
+    cost: internalRows.reduce((s2, r) => s2 + (r.cst || 0), 0),
     ifix: internalRows.reduce((s2, r) => s2 + r.ifix, 0),
   }), [internalRows]);
 
@@ -578,8 +643,9 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
   const th = (key, label, right, tint) => (
     <th
       className={(right ? "r" : "") + (tint ? " " + tint : "") +
+                 (GLOSS[key] ? " has-gl" : "") +
                  (sort.key === key ? " sorted" : "")}
-      title={"Sort by " + label.toLowerCase()}
+      title={(GLOSS[key] ? GLOSS[key] + "\n\n" : "") + "Click to sort by " + label.toLowerCase()}
       scope="col"
       aria-sort={sort.key === key ? (sort.dir === "asc" ? "ascending" : "descending") : undefined}
       onClick={() =>
@@ -616,7 +682,9 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                 {fmtH(snap.people_union.hours)} h were logged in Zoho People and never reached
                 Zoho Projects, and they are counted here.{" "}
                 Any report you run inside Zoho Projects will therefore show the same hours or fewer,
-                never more — that is expected, not an error.
+                never more — that is expected, not an error. Archived projects are included too: the
+                work was done, and dropping it because the project has since been closed would break
+                every comparison between one year and the next.
                 {snap.people_union.unrated > 0 && (
                   <> {fmtH(snap.people_union.unrated)} h of them have no hourly cost on record and
                   are priced at zero.</>
@@ -1026,11 +1094,15 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                             <h4>Client</h4>
                             <ul>
                               <li>
-                                <span>Revenue {year === "all" ? "all time" : "in " + year}</span>
+                                <span className="gl" title={GLOSS.rev}>
+                                  Revenue {year === "all" ? "all time" : "in " + year}
+                                </span>
                                 <b className="num">{eurK(r.rev)}</b>
                               </li>
                               <li>
-                                <span>Share of the {year === "all" ? "period" : year}</span>
+                                <span className="gl" title={GLOSS.share}>
+                                  Share of the {year === "all" ? "period" : year}
+                                </span>
                                 <b className="num">{pct(wTot ? r.rev / wTot : 0)}</b>
                               </li>
                               {r.ihours > 0 && (
@@ -1040,11 +1112,11 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                                 </li>
                               )}
                               <li className="crm">
-                                <span>Contract value (CRM amount)</span>
+                                <span className="gl" title={GLOSS.amt}>Contract value (CRM amount)</span>
                                 <b className="num">{r.amt == null ? "—" : eurK(r.amt)}</b>
                               </li>
                               <li className="crm">
-                                <span>Margin on contract</span>
+                                <span className="gl" title={GLOSS.pctamt}>Margin on contract</span>
                                 <b className={"num " + band(r.marginPctAmt)}>
                                   {r.marginAmt == null ? "—" : eurK(r.marginAmt)}
                                   {r.marginPctAmt == null ? "" : " · " + pct(r.marginPctAmt)}
@@ -1052,7 +1124,7 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                               </li>
                               <li title={r.ltvn + " Won deal" + (r.ltvn === 1 ? "" : "s") +
                                          " in CRM, all time — a different measure from invoiced revenue"}>
-                                <span>Lifetime value (CRM Won deals)</span>
+                                <span className="gl" title={GLOSS.ltv}>Lifetime value (CRM Won deals)</span>
                                 <b className="num">{r.ltv == null ? "—" : eurK(r.ltv)}</b>
                               </li>
                             </ul>
@@ -1179,6 +1251,11 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                                         {p.link === "none" &&
                                           <i className="tag warn">Missing CRMid in Projects</i>}
                                         {p.k === "client_mgmt" && <i className="tag mod">management</i>}
+                                        {p.arch && (
+                                          <i className="tag" title="Archived in Zoho Projects. Its hours still count: the work was done.">
+                                            archived
+                                          </i>
+                                        )}
                                         {/* Il valore del deal e il suo peso sul
                                             cliente: la riga dice da sola perché
                                             questo progetto conta. */}
@@ -1287,7 +1364,9 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
               <div className="k">Hours logged</div>
               <div className="v num">{Math.round(iTot.hours).toLocaleString("en-GB")}</div>
               <div className="s">
-                {internalRows.length} projects · {year === "all" ? "whole period" : year}
+                {internalRows.length} projects · {year === "all" ? "2025 on" : year}
+                {snap.sprints && snap.sprints.projects && snap.sprints.projects.length > 0 &&
+                  " · incl. Zoho Sprints"}
               </div>
             </div>
             {!viewer && (
@@ -1327,8 +1406,9 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
               <thead>
                 <tr>
                   {ith("name", "Project")}
-                  {ith("kind", "Kind")}
-                  {ith("hours", "Hours", true)}
+                  {ith("kind", "Source")}
+                  {ith("hours", year === "all" ? "Hours 2025 on" : "Hours " + year, true)}
+                  {ith("hall", "Hours since start", true)}
                   {!viewer && ith("cost", "Real cost", true)}
                   {ith("ifix", "Internal fix h", true)}
                 </tr>
@@ -1345,12 +1425,24 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                       {p.s && <div className="via">{p.s}</div>}
                     </td>
                     <td>
-                      <i className={"tag " + (p.k === "presale" ? "warn" : "mod")}>
-                        {p.k === "presale" ? "pre-sales" : "internal"}
+                      <i className={"tag " + (p.src === "sprints" ? "lic" : p.k === "presale" ? "warn" : "mod")}>
+                        {p.src === "sprints" ? "Sprints" : p.k === "presale" ? "pre-sales" : "Projects"}
                       </i>
                     </td>
                     <td className="r num">{Math.round(p.h).toLocaleString("en-GB")}</td>
-                    {!viewer && <td className="r num">{eur(p.cst)}</td>}
+                    <td className="r num dim"
+                        title={p.hall ? "Every hour logged on this project since it started, outside this dashboard's window too"
+                                      : "not read for this project"}>
+                      {p.hall ? Math.round(p.hall).toLocaleString("en-GB") : "—"}
+                    </td>
+                    {!viewer && (
+                      <td className="r num"
+                          title={p.cst == null
+                            ? "Zoho Sprints carries no hourly cost, and some of the people logging there are not on the payroll. A cost here would be invented."
+                            : undefined}>
+                        {p.cst == null ? <span className="na">—</span> : eur(p.cst)}
+                      </td>
+                    )}
                     <td className="r num ifix">
                       {p.ifix ? Math.round(p.ifix).toLocaleString("en-GB") : "—"}
                     </td>
@@ -1358,7 +1450,7 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                 ))}
                 {!internalRows.length && (
                   <tr>
-                    <td colSpan={viewer ? 4 : 5} className="na">
+                    <td colSpan={viewer ? 5 : 6} className="na">
                       No internal project has hours in this period.
                     </td>
                   </tr>
@@ -1371,6 +1463,16 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
             Click a project name to download who logged the hours and when. The file carries no
             margin and no revenue, because neither exists here.
           </p>
+          {snap.sprints && snap.sprints.projects && snap.sprints.projects.length > 0 && (
+            <p className="tablenote">
+              <b>Zoho Sprints is counted here and nowhere else.</b> Development logs its time in
+              Sprints, and Zoho&apos;s bridge to Projects is all but switched off on this portal, so
+              those hours reach neither Zoho Projects nor Zoho People. They are product development
+              rather than work sold to a client, so they stay out of every client margin — but they
+              are real hours, and the people who logged them show far fewer hours anywhere else.
+              Sprints records no hourly cost, so these rows carry hours only.
+            </p>
+          )}
         </>
         )}
 

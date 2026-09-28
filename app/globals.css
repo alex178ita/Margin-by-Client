@@ -619,3 +619,13 @@ th.ifix, td.ifix { background: color-mix(in srgb, #7a5ea8 6%, transparent); colo
    sta guardando, non come lo si filtra: le due cose non vanno mescolate. */
 .views { margin: 14px 0 4px; }
 .views button { font-weight: 600; }
+
+/* Etichette spiegate.
+   Prima versione: sottolineato punteggiato su ogni intestazione che avesse una
+   definizione. Erano quasi tutte, quindi il segno non distingueva più niente e
+   aggiungeva tratteggio a una tabella già densa — illeggibile. Su
+   un'intestazione di tabella il tooltip è comportamento atteso e non ha bisogno
+   di essere annunciato; il segno resta solo sulle poche etichette del pannello,
+   dove non ci si aspetta di poterci passare sopra. */
+th.has-gl { cursor: help; }
+.gl { text-decoration: underline dotted rgba(0,0,0,.22); text-underline-offset: 3px; cursor: help; }
