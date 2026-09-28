@@ -86,8 +86,8 @@ function Gl({ t, children }) {
   );
 }
 
-const BUILD = "store detection · 28/09/2026";
-const VERSION = "0.7.2";
+const BUILD = "private blob, archived in window · 28/09/2026";
+const VERSION = "0.7.4";
 
 // Oltre questo, la richiesta si interrompe e il file passa dal link diretto.
 const WAIT_MAX = 180000;
@@ -2112,9 +2112,17 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
               flattered by the difference.
             </p>
           )}
+          {/* Un elenco di nomi in fondo alla pagina è utile finché si legge.
+              Oltre una quindicina diventa una riga che nessuno finisce, e su cui
+              quindi nessuno lavora: meglio dire quanti sono e mostrarne un
+              campione che dà l'idea di cosa siano. */}
           {snap.unmatched && snap.unmatched.length > 0 && (
             <p style={{ marginTop: 10 }}>
-              Client projects not attributed ({snap.unmatched.length}): {snap.unmatched.join(" · ")}
+              <b>{snap.unmatched.length}</b> project{snap.unmatched.length > 1 ? "s" : ""} named
+              like client work matched no client, so their hours sit in no margin:{" "}
+              {snap.unmatched.slice(0, 15).join(" · ")}
+              {snap.unmatched.length > 15 &&
+                <> · <i>and {snap.unmatched.length - 15} more</i></>}
             </p>
           )}
         </footer>
