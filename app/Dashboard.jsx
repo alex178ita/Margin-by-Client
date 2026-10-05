@@ -86,8 +86,8 @@ function Gl({ t, children }) {
   );
 }
 
-const BUILD = "project-cost: più progetti, chiave condivisa · 28/09/2026";
-const VERSION = "0.7.7";
+const BUILD = "tariffe da cedolino a settembre 2026 · 05/10/2026";
+const VERSION = "0.7.8";
 
 // Oltre questo, la richiesta si interrompe e il file passa dal link diretto.
 const WAIT_MAX = 180000;
