@@ -35,6 +35,12 @@ const GLOSS = {
         "in the cost because it is part of serving this client.",
   hrs: "Hours logged on this client's projects in the selected period.",
   margin: "Revenue minus real cost, in euros, for the selected period.",
+  prov: "External providers bought for this client's deals, from the Providers section of the deal in the CRM. " +
+        "A provider line carries no date, so it sits in the period total and not in the year-by-year split.",
+  infra: "Servers, platform licences and bandwidth this client generates, read from the infrastructure source. " +
+         "It belongs to the client, not to any one project, so it is not spread across projects.",
+  allin: "Revenue minus the team cost, the external providers and the infrastructure. " +
+         "The margin above it counts delivery effort only; this one is what is left after everything this page knows about.",
   pctall: "Not all time: the whole period this dashboard covers, from its first year to today. " +
           "Shown beside the selected year so a weak year on a solid client is not read as a " +
           "collapse, or the reverse.",
@@ -86,8 +92,8 @@ function Gl({ t, children }) {
   );
 }
 
-const BUILD = "tariffe da cedolino a settembre 2026 · 05/10/2026";
-const VERSION = "0.7.8";
+const BUILD = "costi esterni e infrastruttura · 27/10/2026";
+const VERSION = "0.8.0";
 
 // Oltre questo, la richiesta si interrompe e il file passa dal link diretto.
 const WAIT_MAX = 180000;
@@ -129,7 +135,9 @@ const HELP = [
   { k: "internal", t: "Internal fix hours", s: "our own defects, kept out of the client's margin" },
   { k: "link", t: "Deals and projects", s: "CRMid, guesses, deals served by several projects" },
   { k: "revenue", t: "What counts as revenue", s: "net of VAT, net of credit notes" },
-  { k: "limits", t: "What this margin is not", s: "no servers, no infrastructure, no licences bought" },
+  { k: "providers", t: "External providers", s: "work bought outside, from the deal in the CRM" },
+  { k: "infra", t: "Infrastructure cost", s: "servers and platform, per client, from outside Zoho" },
+  { k: "limits", t: "What this margin is not", s: "what is still missing from the figure" },
 ];
 
 function HelpDialog({ topic, snap, onClose }) {
@@ -388,20 +396,128 @@ function HelpDialog({ topic, snap, onClose }) {
     limits: (
       <>
         <p>
-          The only cost subtracted here is people&apos;s time. Servers, infrastructure, third-party
-          licences and the rest of the cost of running the platform are not recorded anywhere in
-          Zoho, so they cannot enter this calculation.
+          <b>Margin</b> subtracts people&apos;s time and nothing else. <b>Margin after all costs</b>
+          {" "}also subtracts the external providers declared on the deal and the infrastructure read
+          for that client. Both are shown, because they answer different questions: the first says
+          whether the delivery effort was sold well, the second what is actually left.
         </p>
         <p>
-          Read these figures as a contribution margin on delivery effort, not as net margin: the real
-          profitability of every client sits below the number shown here, by an amount this page has
-          no way to measure.
+          Neither is net margin. Sales and marketing effort, office and administration, and anything
+          bought for a client that nobody wrote down stay outside both figures. A client with no
+          provider line and no infrastructure line is not a client with no such costs: it is a client
+          for whom nobody has recorded any.
         </p>
         {snap.cost_gaps && snap.cost_gaps.hours > 0 && (
           <p className="hd-note">
             Separately, <b>{Math.round(snap.cost_gaps.hours).toLocaleString("en-GB")} hours</b> across{" "}
             {snap.cost_gaps.projects} client projects carry no hourly cost, so they cost nothing here
             and every margin they touch is flattered by that much.
+          </p>
+        )}
+      </>
+    ),
+    providers: (
+      <>
+        <p>
+          A deal in the CRM has a <b>Providers</b> section: one line per supplier, with an amount and
+          a description. That is work bought outside for this client — a translation, a third-party
+          licence, a bought-in consulting day — and it leaves the company as soon as it is invoiced
+          to us.
+        </p>
+        <p>
+          The dashboard reads those lines and adds them up per client. If the section is empty but
+          the deal carries a <b>Total Providers Cost</b>, that figure is used instead and the export
+          says so. When both are filled and disagree, the lines win and the difference is reported
+          rather than quietly averaged away.
+        </p>
+        <p>
+          A provider line carries <b>no date</b>. So it counts in the period total and in{" "}
+          <b>Margin after all costs</b>, and it stays out of the year-by-year split, which is made of
+          figures that have a real date on them.
+        </p>
+        <p>
+          It is counted through the deal it sits on, so a provider cost on a deal that has not been
+          invoiced in this period does not appear yet. It arrives with the first invoice of that
+          deal, together with the revenue it was spent against.
+        </p>
+        {snap.extra_costs && snap.extra_costs.providers && (
+          <p className="hd-note">
+            {snap.extra_costs.providers.error
+              ? <>The Providers section could not be read on this refresh
+                  ({snap.extra_costs.providers.error}), so only the totals written on the deals were
+                  used.</>
+              : snap.extra_costs.providers.deals_with_cost > 0
+                ? <>{snap.extra_costs.providers.deals_with_cost} deal
+                    {snap.extra_costs.providers.deals_with_cost > 1 ? "s" : ""} currently carry a
+                    provider cost
+                    {snap.extra_costs.providers.mismatched > 0 &&
+                      <>, and on {snap.extra_costs.providers.mismatched} of them the lines do not add
+                        up to the total written on the deal</>}.</>
+                : <>No deal carries a provider cost yet, so this line appears on no client. It will
+                    appear on its own as soon as the section is filled in.</>}
+          </p>
+        )}
+      </>
+    ),
+    infra: (
+      <>
+        <p>
+          Servers, platform licences and bandwidth are not in Zoho. They are read from a source that
+          already totals them <b>per client</b>, and this page only displays what that source says:
+          none of the calculation happens here.
+        </p>
+        <p>
+          The figure belongs to the client and is not divided among its projects. A server does not
+          belong to a project, and splitting it by hours would produce a richer number and a less
+          true one. So the project margins on this page are unchanged by it; only{" "}
+          <b>Margin after all costs</b> on the client moves.
+        </p>
+        <p>
+          <b>The names rarely match.</b> Here a client is <i>Fendi</i>, at the source it is{" "}
+          <i>FENDI S.R.L.</i>; here it is <i>Haier / Candy Hoover</i>, there just <i>Haier</i>,
+          because that is the website. So the two are matched in steps, each of which can be said out
+          loud: an alias written by hand, then the same name ignoring case and punctuation, then any
+          name that client genuinely goes by — the companies that invoice it, the CRM spellings —
+          and last the words that matter, with the legal forms dropped, so that <i>Candy Hoover</i>
+          {" "}lands on <i>Haier / Candy Hoover</i>.
+        </p>
+        <p>
+          What it will not do is guess. A row that could belong to two clients goes to neither: it
+          stays unmatched and says between which it hesitated, because an infrastructure cost on the
+          wrong client makes two margins false and neither of them looks odd.
+        </p>
+        <p>
+          Those cases, and any name no rule can reach, are settled by a <b>mapping table</b> kept
+          with the code. It does not have to be written by hand: <code>/api/infra-map</code> returns
+          it already filled in — every name the source exposes, the client it lands on today, and{" "}
+          <code>null</code> where nothing matched. Check it, correct what is wrong, and it becomes
+          the table. A name left on <code>null</code> is deliberately left out of every margin, which
+          is not the same as a name nobody has looked at yet.
+        </p>
+        <p>
+          Every match carries how it was made, and the ones reached by words rather than by a
+          declared name are counted below: if a margin looks strange, that count is the first place
+          to look.
+        </p>
+        {snap.extra_costs && snap.extra_costs.infra && (
+          <p className="hd-note">
+            {!snap.extra_costs.infra.configured
+              ? <>No infrastructure source is configured on this deployment, so the line appears
+                  nowhere and every margin here is before infrastructure.</>
+              : snap.extra_costs.infra.error
+                ? <>The infrastructure source did not answer on this refresh
+                    ({snap.extra_costs.infra.error}).</>
+                : <>{snap.extra_costs.infra.clients_with_cost} client
+                    {snap.extra_costs.infra.clients_with_cost === 1 ? "" : "s"} carry an
+                    infrastructure cost
+                    {snap.extra_costs.infra.inferred > 0 &&
+                      <>, {snap.extra_costs.infra.inferred} of those rows matched on the words in the
+                        name rather than on a declared one</>}
+                    {snap.extra_costs.infra.unmatched.length > 0 &&
+                      <>, and {snap.extra_costs.infra.unmatched.length} row
+                        {snap.extra_costs.infra.unmatched.length > 1 ? "s" : ""} could not be matched
+                        to any client here: {snap.extra_costs.infra.unmatched.slice(0, 6)
+                          .map((u) => u.why ? `${u.client} (${u.why})` : u.client).join("; ")}</>}.</>}
           </p>
         )}
       </>
@@ -734,6 +850,18 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
           mgmtN: (mgmtByClient[c.c] || {}).n || 0,
           // Che fetta del costo di questo cliente è lavoro non venduto.
           mgmtShare: cost ? ((mgmtByClient[c.c] || {}).cost || 0) / cost : null,
+          /**
+           * Il margine dopo tutto quello che questa pagina sa.
+           *
+           * Fornitori e infrastruttura non hanno un anno sopra, quindi il
+           * confronto si fa sul ricavo di sempre e non su quello dell'anno
+           * scelto: mettere un costo senza data contro il ricavo di un anno solo
+           * darebbe una percentuale che peggiora ogni volta che si stringe il
+           * periodo, il che non vuol dire niente.
+           */
+          allInCost: c.cost == null ? null : c.cost + (c.prov || 0) + (c.infra || 0),
+          allInPct: c.cost == null || !c.rt
+            ? null : (c.rt - c.cost - (c.prov || 0) - (c.infra || 0)) / c.rt,
           // Le stesse due percentuali con dentro anche il debug interno.
           marginPctIn: cost == null || rev === 0 || !icost ? null : (rev - cost - icost) / rev,
           marginPctAmtIn: c.cost == null || !c.amt || !c.icost
@@ -1667,6 +1795,25 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                                 <div><Gl t={GLOSS.pct}>Margin</Gl>
                                   <b className={"num big " + band(r.marginPct)}>
                                     {r.marginPct == null ? "—" : pct(r.marginPct)}</b></div>
+                                {/*
+                                  Le due voci che non vengono dalle ore. Compaiono
+                                  solo quando ci sono: una riga "—" su ogni cliente
+                                  per un campo che quasi nessuno compila sarebbe
+                                  rumore, e il capitolo del manuale spiega perche'
+                                  un cliente non ce l'ha.
+                                */}
+                                {!viewer && r.prov > 0 && (
+                                  <div><Gl t={GLOSS.prov}>External providers</Gl>
+                                    <b className="num">{eur(r.prov)}</b></div>
+                                )}
+                                {!viewer && r.infra > 0 && (
+                                  <div><Gl t={GLOSS.infra}>Infrastructure</Gl>
+                                    <b className="num">{eur(r.infra)}</b></div>
+                                )}
+                                {!viewer && r.allInPct != null && (r.prov > 0 || r.infra > 0) && (
+                                  <div><Gl t={GLOSS.allin}>Margin after all costs</Gl>
+                                    <b className={"num big " + band(r.allInPct)}>{pct(r.allInPct)}</b></div>
+                                )}
                                 <div><Gl t={GLOSS.ifix}>Internal fix</Gl>
                                   <b className="num">{r.ihours ? Math.round(r.ihours).toLocaleString("en-GB") + " h" : "—"}</b></div>
                               </div>
