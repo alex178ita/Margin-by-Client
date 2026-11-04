@@ -92,8 +92,8 @@ function Gl({ t, children }) {
   );
 }
 
-const BUILD = "costi esterni e infrastruttura · 27/10/2026";
-const VERSION = "0.8.0";
+const BUILD = "cedolini a ottobre 2026 · 04/11/2026";
+const VERSION = "0.8.1";
 
 // Oltre questo, la richiesta si interrompe e il file passa dal link diretto.
 const WAIT_MAX = 180000;
