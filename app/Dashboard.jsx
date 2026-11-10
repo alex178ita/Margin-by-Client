@@ -1865,13 +1865,13 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                               </div>
 
                               {/*
-                                Il blocco annuo. Compare solo quando c'e' almeno
-                                una delle due voci: una tabella di "—" su ogni
-                                cliente per campi che quasi nessuno compila
-                                sarebbe rumore, e il capitolo del manuale spiega
-                                perche' un cliente non ce l'ha.
+                                Il blocco annuo c'e' su ogni cliente di cui si
+                                conosca il costo dell'anno, anche quando le due
+                                voci in piu' sono a zero: e' la voce che si viene
+                                a cercare, e una voce che appare solo a volte non
+                                si trova. Dove manca un costo, lo dice da se'.
                               */}
-                              {!viewer && r.annCost != null && (r.annInfra > 0 || r.annProv > 0) &&
+                              {!viewer && r.annCost != null &&
                                 <AnnualMargin r={r} year={annYear} infra={infraMeta} />}
 
               <p className="cpwhat">Deals, and the projects that deliver them</p>
@@ -2412,6 +2412,24 @@ function AnnualMargin({ r, year, infra }) {
       ? `consolidated${asOf ? ` to ${asOf}` : ""}`
       : `projected${asOf ? ` from the run rate at ${asOf}` : " over twelve months"}`;
 
+  /**
+   * Il blocco si vede sempre, anche a zero.
+   *
+   * Prima compariva solo dove c'era almeno uno dei due costi, per non mettere
+   * una tabella di trattini su ogni cliente. Era sbagliato: il margine annuo e'
+   * la voce che si viene a cercare, e una voce che appare solo a volte non si
+   * trova. Quando manca un costo lo si dice qui, con il perche', che e'
+   * un'informazione vera — "nessuno ha registrato niente" non e' la stessa cosa
+   * di "non c'e' niente da registrare".
+   */
+  const missing = [];
+  if (!r.annInfra) {
+    missing.push(!infra || !infra.configured
+      ? "no infrastructure report has been loaded yet"
+      : "this client carries no infrastructure cost in the report");
+  }
+  if (!r.annProv) missing.push("no provider cost is declared on its deals");
+
   return (
     <div className="cpann">
       <div className="cpannh">
@@ -2419,6 +2437,7 @@ function AnnualMargin({ r, year, infra }) {
         <i>
           The providers belong to the deals and are shown on each of them below; the
           infrastructure exists only at this level, so this is where the client reads whole.
+          {missing.length > 0 && ` For now ${missing.join(" and ")}, so the figures below are what they are.`}
           {rev === 0 && ` There is no revenue in ${year}, so there is no percentage to show — only the costs.`}
         </i>
       </div>
@@ -2602,12 +2621,14 @@ function MenuBar({ token, missing, gaps, view, viewer, canUnlock, snap, dl }) {
     window.location.reload();
   };
 
-  const menu = (id, label, children, badge) => (
+  // `tone` distingue un conteggio da sistemare (ambra, va guardato) da uno
+  // stato che si porta solo una data (neutro, non c'e' niente da fare).
+  const menu = (id, label, children, badge, tone) => (
     <div className={"mb-item" + (open === id ? " on" : "")}>
       <button className="mb-top" aria-expanded={open === id} aria-haspopup="true"
               onClick={(e) => { e.stopPropagation(); setOpen(open === id ? null : id); }}>
         {label}
-        {badge != null && <i className="mb-badge">{badge}</i>}
+        {badge != null && <i className={"mb-badge" + (tone ? " " + tone : "")}>{badge}</i>}
         <span className="mb-caret" aria-hidden="true">▾</span>
       </button>
       {open === id && <div className="mb-drop" role="menu">{children}</div>}
@@ -2627,6 +2648,14 @@ function MenuBar({ token, missing, gaps, view, viewer, canUnlock, snap, dl }) {
    * infrastruttura, e si legge qui piuttosto che in una pagina di diagnostica.
    */
   const ix = (snap.extra_costs && snap.extra_costs.infra) || null;
+  // A quando sono i costi (la data dichiarata dal rendiconto) e quando e' stato
+  // caricato il file (la data in cui qualcuno l'ha portato qui). Sono due cose
+  // diverse: un file caricato ieri puo' portare i costi del mese scorso.
+  const infraAsOf = (ix && ix.as_of) || null;
+  const infraLoaded = ix && ix.uploaded_at
+    ? new Date(ix.uploaded_at).toLocaleDateString("en-GB",
+        { day: "2-digit", month: "short", year: "numeric" })
+    : null;
   const infraNote = !ix || !ix.configured
     ? "No infrastructure cost loaded yet. Until one is, every margin on this page is the " +
       "margin before infrastructure."
@@ -2645,7 +2674,12 @@ function MenuBar({ token, missing, gaps, view, viewer, canUnlock, snap, dl }) {
     return (
       <button className={"mb-opt" + (o.warn ? " warn" : "") + (o.lock ? " locked" : "")}
               role="menuitem" onClick={onClick}>
-        <span className="mb-l">{label}{o.lock && <i className="lk" aria-hidden="true">🔒</i>}</span>
+        <span className="mb-l">
+          {label}{o.lock && <i className="lk" aria-hidden="true">🔒</i>}
+          {/* Una data o uno stato accanto all'etichetta, non sotto: si legge
+              insieme alla voce invece che dopo. */}
+          {o.tag && <i className="mb-tag">{o.tag}</i>}
+        </span>
         {o.hint && <span className="mb-h">{o.hint}</span>}
       </button>
     );
@@ -2759,16 +2793,27 @@ function MenuBar({ token, missing, gaps, view, viewer, canUnlock, snap, dl }) {
         {menu("infra", "Infrastructure costs", (
           <>
             {infraNote && <div className="mb-note ok">{infraNote}</div>}
+            {/* La data sta sulla voce, non solo nella nota sopra: la domanda
+                "a quando sono aggiornati questi costi" si fa guardando il
+                bottone, e la risposta deve essere li'. */}
             {item(busy ? "Uploading…" : "Upload the cluster report (JSON)",
               () => { if (!busy) fileRef.current && fileRef.current.click(); },
               { lock: viewer,
+                // Solo la data nell'etichetta: "costs as of 2026-11-03" manda a
+                // capo la voce dentro un menu da 310px. Il resto sta nel rigo
+                // sotto, dove c'e' spazio per dirlo per intero.
+                tag: infraAsOf || "none",
                 hint: viewer ? "unlock the internal costs first"
-                             : "the data.json of the cluster report, per client and per month" })}
+                     : infraAsOf
+                       ? `costs as of ${infraAsOf}` +
+                         (infraLoaded ? `, loaded ${infraLoaded}` : "") +
+                         " · a new file replaces it entirely"
+                       : "the data.json of the cluster report, per client and per month" })}
             {upMsg && <div className={"mb-note" + (upMsg.err ? " warn" : " ok")}>{upMsg.t}</div>}
             {item("How the infrastructure cost works", () => { setOpen(null); setHelp("infra"); },
               { hint: "monthly against annual, projected against paid, and the names" })}
           </>
-        ))}
+        ), infraAsOf || "none", "quiet")}
 
         {menu("help", "How to read this", (
           <>
