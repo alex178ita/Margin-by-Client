@@ -2711,10 +2711,31 @@ function MenuBar({ token, missing, gaps, view, viewer, canUnlock, snap, dl }) {
       if (!res.ok || !j.ok) {
         setUpMsg({ err: true, t: j.error || ("the upload failed with HTTP " + res.status) });
       } else {
+        /**
+         * Il messaggio dice subito se i nomi si sono abbinati.
+         *
+         * Un "fatto" seguito da una pagina che non cambia e' il modo piu' rapido
+         * per perdere fiducia in uno strumento. Qui si legge, senza ricaricare,
+         * quanti clienti hanno preso il costo e quali nomi sono rimasti fuori:
+         * un nome fuori e' un costo che non entra in nessun margine.
+         */
+        const a = j.applied;
         setUpMsg({
-          t: `${j.clients} clients, ${eur(j.monthly_total)} a month (${eur(j.annual_total)} a year` +
+          t: `${j.clients} client rows, ${eur(j.monthly_total)} a month ` +
+             `(${eur(j.annual_total)} a year` +
              `${j.costs_as_of ? ", costs as of " + j.costs_as_of : ""}). ` +
-             "Press Reload now to rebuild the page.",
+             (a
+               ? `${a.clients_matched} clients took a cost` +
+                 (a.unmatched && a.unmatched.length
+                   ? `; ${a.unmatched.length} name${a.unmatched.length > 1 ? "s" : ""} matched none ` +
+                     `(${a.unmatched.slice(0, 5).join(", ")}` +
+                     `${a.unmatched.length > 5 ? ", …" : ""})`
+                   : "; every name matched one") +
+                 ". Press Reload now to see them."
+               : j.apply_error
+                 ? `Saved, but the stored snapshot could not be updated (${j.apply_error}), ` +
+                   "so press Reload now and let the page rebuild."
+                 : "Press Reload now to rebuild the page."),
         });
       }
     } catch (err) {
