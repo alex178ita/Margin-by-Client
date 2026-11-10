@@ -35,12 +35,18 @@ const GLOSS = {
         "in the cost because it is part of serving this client.",
   hrs: "Hours logged on this client's projects in the selected period.",
   margin: "Revenue minus real cost, in euros, for the selected period.",
-  prov: "External providers bought for this client's deals, from the Providers section of the deal in the CRM. " +
-        "A provider line carries no date, so it sits in the period total and not in the year-by-year split.",
+  prov: "The external providers of this client's deals added up — each one is shown on its own deal " +
+        "below, which is where it belongs, because a provider line in the CRM was bought for one " +
+        "contract. A provider line carries no date, so the whole of it is charged against the year " +
+        "here, which is prudent rather than precise.",
   infra: "Servers, platform licences and bandwidth this client generates, read from the infrastructure source. " +
-         "It belongs to the client, not to any one project, so it is not spread across projects.",
-  allin: "Revenue minus the team cost, the external providers and the infrastructure. " +
+         "It belongs to the client, not to any one project, so it is not spread across projects. " +
+         "The source gives it per month; the annual figure is that month over twelve.",
+  allin: "Revenue for the year minus the team cost, the external providers and the infrastructure. " +
          "The margin above it counts delivery effort only; this one is what is left after everything this page knows about.",
+  annonly: "The same year, with one of the two extra costs taken off and not the other. " +
+           "The infrastructure is measured, the providers are typed into the CRM by hand: " +
+           "when the all-in margin drops, these two say which of them did it.",
   pctall: "Not all time: the whole period this dashboard covers, from its first year to today. " +
           "Shown beside the selected year so a weak year on a solid client is not read as a " +
           "collapse, or the reverse.",
@@ -60,6 +66,10 @@ const GLOSS = {
           "contract is not a calendar year, and comparing the full amount with one year of " +
           "hours would flatter anything that started earlier. While delivery is still running " +
           "the cost is not final, so it is marked “so far”.",
+  dealmgp: "The same margin, with this deal's external providers taken off as well as the hours. " +
+           "A provider line in the CRM was bought for one contract, so it belongs to that " +
+           "contract's margin and not to a client-wide total. The figure before them is shown " +
+           "underneath, so the effect of the two costs can be told apart.",
 };
 
 /**
@@ -92,8 +102,8 @@ function Gl({ t, children }) {
   );
 }
 
-const BUILD = "cedolini a ottobre 2026 · 04/11/2026";
-const VERSION = "0.8.1";
+const BUILD = "costi infrastruttura e fornitori · 10/11/2026";
+const VERSION = "0.8.2";
 
 // Oltre questo, la richiesta si interrompe e il file passa dal link diretto.
 const WAIT_MAX = 180000;
@@ -396,10 +406,11 @@ function HelpDialog({ topic, snap, onClose }) {
     limits: (
       <>
         <p>
-          <b>Margin</b> subtracts people&apos;s time and nothing else. <b>Margin after all costs</b>
-          {" "}also subtracts the external providers declared on the deal and the infrastructure read
-          for that client. Both are shown, because they answer different questions: the first says
-          whether the delivery effort was sold well, the second what is actually left.
+          Three levels, and each one takes off what belongs to it. <b>Margin</b> at the top of a
+          client subtracts people&apos;s time and nothing else, over the period you have selected.
+          On a <b>deal</b> it also subtracts that deal&apos;s external providers, because they were
+          bought for that contract. <b>Annual margin</b>, on the client, adds the one cost that has
+          no contract to sit on — the infrastructure — and reads the whole thing over a year.
         </p>
         <p>
           Neither is net margin. Sales and marketing effort, office and administration, and anything
@@ -425,15 +436,24 @@ function HelpDialog({ topic, snap, onClose }) {
           to us.
         </p>
         <p>
-          The dashboard reads those lines and adds them up per client. If the section is empty but
-          the deal carries a <b>Total Providers Cost</b>, that figure is used instead and the export
-          says so. When both are filled and disagree, the lines win and the difference is reported
-          rather than quietly averaged away.
+          <b>The cost belongs to the deal.</b> It was bought for one contract, so it is taken off
+          that contract&apos;s margin: on the deal below, the percentage reads{" "}
+          <i>Margin on contract, providers included</i>, with the figure before them on the line
+          underneath, so the hours and the bought-in work can be told apart. On the client it appears
+          once more, as the sum of its deals, only to reach the client&apos;s own total.
         </p>
         <p>
-          A provider line carries <b>no date</b>. So it counts in the period total and in{" "}
-          <b>Margin after all costs</b>, and it stays out of the year-by-year split, which is made of
-          figures that have a real date on them.
+          If the section is empty but the deal carries a <b>Total Providers Cost</b>, that figure is
+          used instead and the export says so. When both are filled and disagree, the lines win and
+          the difference is reported rather than quietly averaged away.
+        </p>
+        <p>
+          A provider line carries <b>no date</b>. So it stays out of the year-by-year split, which is
+          made of figures that have a real date on them, and in <b>Annual margin</b> it is charged in
+          full to the year on display. That is the prudent reading, not the precise one: if a
+          provider was bought for a two-year contract, the year shown carries all of it. A date field
+          on the subform would settle this; until there is one, the figure is shown on its own line
+          so the effect can be seen rather than guessed at.
         </p>
         <p>
           It is counted through the deal it sits on, so a provider cost on a deal that has not been
@@ -467,10 +487,30 @@ function HelpDialog({ topic, snap, onClose }) {
           none of the calculation happens here.
         </p>
         <p>
-          The figure belongs to the client and is not divided among its projects. A server does not
-          belong to a project, and splitting it by hours would produce a richer number and a less
-          true one. So the project margins on this page are unchanged by it; only{" "}
-          <b>Margin after all costs</b> on the client moves.
+          <b>The source speaks in months; the margin is annual.</b> What it gives is what that client
+          costs to run right now, per month. The annual figure is that month multiplied by twelve,
+          and it is labelled <i>projected</i> for exactly that reason: it is today&apos;s run rate
+          carried forward, not what has been paid. The label turns to <i>consolidated</i> only when
+          the source itself says the year is closed. Both forms are written next to the figure,
+          together with the date the costs were read, so nobody carries a projection into a meeting
+          as if it were an invoice.
+        </p>
+        <p>
+          The figure belongs to the client and is not divided among its projects or deals. A server
+          does not belong to a contract, and splitting it by hours or by amount would produce a
+          richer number and a less true one. This is the one cost on this page that has no deal to
+          sit on, which is why the client level exists at all: it appears once, in{" "}
+          <b>Annual margin</b>, shown on its own and alongside the providers summed from the deals,
+          so that a drop can be traced to one or the other.
+        </p>
+        <p>
+          <b>Loading the file.</b> The report comes from outside Zoho, so for now it is carried in by
+          hand: <i>Infrastructure costs → Upload the cluster report</i> takes the <code>data.json</code>
+          {" "}of the report, keeps it with the snapshot, and the costs appear at the next{" "}
+          <i>Reload now</i>. It needs the internal costs unlocked, because that one file sets the
+          infrastructure cost of every client. A file that is not valid JSON, carries no recognisable
+          client rows, or adds up to zero is refused and says why — a quietly emptied file would
+          flatter every margin here at once.
         </p>
         <p>
           <b>The names rarely match.</b> Here a client is <i>Fendi</i>, at the source it is{" "}
@@ -806,8 +846,21 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
     bridged: sprintRows.reduce((s2, r) => s2 + (r.alreadyInProjects || 0), 0),
   }), [sprintRows]);
 
+  /**
+   * L'anno del blocco annuo.
+   *
+   * Segue il selettore quando c'e' un anno, e su "All" prende l'ultimo: il
+   * costo dell'infrastruttura e' quello di adesso, e sommarlo al ricavo di
+   * quattro anni darebbe un margine che non e' di nessun esercizio.
+   */
+  const annYear = year === "all" ? (years.length ? years[years.length - 1] : year) : year;
+  // Da quando sono i costi dell'infrastruttura e se l'annuo è proiettato o
+  // pagato: lo dice il blocco annuo, cliente per cliente.
+  const infraMeta = (snap.extra_costs && snap.extra_costs.infra) || null;
+
   const rows = useMemo(() => {
     const query = q.trim().toLowerCase();
+    const annOf = (c) => (accrual ? (c.ra && c.ra[annYear]) || 0 : (c.ry && c.ry[annYear]) || 0);
     const out = snap.clients
       .filter((c) => !(noExecus && c.c === "Execus"))
       .map((c) => {
@@ -851,17 +904,29 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
           // Che fetta del costo di questo cliente è lavoro non venduto.
           mgmtShare: cost ? ((mgmtByClient[c.c] || {}).cost || 0) / cost : null,
           /**
-           * Il margine dopo tutto quello che questa pagina sa.
+           * Il margine annuo del cliente, infrastruttura e fornitori compresi.
            *
-           * Fornitori e infrastruttura non hanno un anno sopra, quindi il
-           * confronto si fa sul ricavo di sempre e non su quello dell'anno
-           * scelto: mettere un costo senza data contro il ricavo di un anno solo
-           * darebbe una percentuale che peggiora ogni volta che si stringe il
-           * periodo, il che non vuol dire niente.
+           * Perche' su base annua e non sul periodo scelto. L'infrastruttura
+           * arriva come costo al mese e vale finche' quel cliente e' in piedi:
+           * dodici mesi sono la sua unita' naturale. Metterla contro il ricavo
+           * di un trimestre, o contro il ricavo di sempre, darebbe una
+           * percentuale che cambia a ogni cambio di filtro senza che sia
+           * cambiato niente nei conti. Quindi questa voce ha un anno suo,
+           * scritto accanto, e non segue il selettore quando e' su "All": in
+           * quel caso prende l'ultimo anno, perche' un costo corrente appartiene
+           * all'adesso.
+           *
+           * Il dettaglio in tre righe — con la sola infrastruttura, con i soli
+           * fornitori, con tutti e due — perche' le due voci hanno affidabilita'
+           * diverse: l'infrastruttura e' misurata, i fornitori sono compilati a
+           * mano nel CRM. Chi legge deve poter vedere quanto del calo dipende da
+           * quale delle due.
            */
-          allInCost: c.cost == null ? null : c.cost + (c.prov || 0) + (c.infra || 0),
-          allInPct: c.cost == null || !c.rt
-            ? null : (c.rt - c.cost - (c.prov || 0) - (c.infra || 0)) / c.rt,
+          annRev: annOf(c),
+          annCost: !hasCost ? null
+            : costPerYear && c.cy && c.cy[annYear] ? c.cy[annYear].cost : null,
+          annInfra: c.infra || 0,
+          annProv: c.prov || 0,
           // Le stesse due percentuali con dentro anche il debug interno.
           marginPctIn: cost == null || rev === 0 || !icost ? null : (rev - cost - icost) / rev,
           marginPctAmtIn: c.cost == null || !c.amt || !c.icost
@@ -898,7 +963,7 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
       return sort.dir === "asc" ? c : -c;
     });
     return out;
-  }, [snap, year, noExecus, q, sort, hasCost, costPerYear, accrual, viewer, mgmtByClient]);
+  }, [snap, year, annYear, noExecus, q, sort, hasCost, costPerYear, accrual, viewer, mgmtByClient]);
 
   const tot = useMemo(() => {
     const revenue = rows.reduce((s, r) => s + r.rev, 0);
@@ -1795,28 +1860,19 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                                 <div><Gl t={GLOSS.pct}>Margin</Gl>
                                   <b className={"num big " + band(r.marginPct)}>
                                     {r.marginPct == null ? "—" : pct(r.marginPct)}</b></div>
-                                {/*
-                                  Le due voci che non vengono dalle ore. Compaiono
-                                  solo quando ci sono: una riga "—" su ogni cliente
-                                  per un campo che quasi nessuno compila sarebbe
-                                  rumore, e il capitolo del manuale spiega perche'
-                                  un cliente non ce l'ha.
-                                */}
-                                {!viewer && r.prov > 0 && (
-                                  <div><Gl t={GLOSS.prov}>External providers</Gl>
-                                    <b className="num">{eur(r.prov)}</b></div>
-                                )}
-                                {!viewer && r.infra > 0 && (
-                                  <div><Gl t={GLOSS.infra}>Infrastructure</Gl>
-                                    <b className="num">{eur(r.infra)}</b></div>
-                                )}
-                                {!viewer && r.allInPct != null && (r.prov > 0 || r.infra > 0) && (
-                                  <div><Gl t={GLOSS.allin}>Margin after all costs</Gl>
-                                    <b className={"num big " + band(r.allInPct)}>{pct(r.allInPct)}</b></div>
-                                )}
                                 <div><Gl t={GLOSS.ifix}>Internal fix</Gl>
                                   <b className="num">{r.ihours ? Math.round(r.ihours).toLocaleString("en-GB") + " h" : "—"}</b></div>
                               </div>
+
+                              {/*
+                                Il blocco annuo. Compare solo quando c'e' almeno
+                                una delle due voci: una tabella di "—" su ogni
+                                cliente per campi che quasi nessuno compila
+                                sarebbe rumore, e il capitolo del manuale spiega
+                                perche' un cliente non ce l'ha.
+                              */}
+                              {!viewer && r.annCost != null && (r.annInfra > 0 || r.annProv > 0) &&
+                                <AnnualMargin r={r} year={annYear} infra={infraMeta} />}
 
               <p className="cpwhat">Deals, and the projects that deliver them</p>
 
@@ -1842,6 +1898,21 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                                 const all = b.ps.reduce((a, x) => a + (x.cost || 0), 0);
                                 const allH = b.ps.reduce((a, x) => a + (x.hours || 0), 0);
                                 const mg = amt > 0 && !viewer && b.ps.length ? (amt - all) / amt : null;
+                                /**
+                                 * Il fornitore esterno e' un costo DI QUESTO deal.
+                                 *
+                                 * Sta sulla scheda del deal, non sulla somma del
+                                 * cliente: una riga della sezione Providers e'
+                                 * stata comprata per un contratto preciso, e il
+                                 * margine di quel contratto senza di lei e'
+                                 * sbagliato per eccesso. Si legge da `info`, che
+                                 * viene dalla lista deal del cliente: il campo sul
+                                 * progetto porta il totale dell'intero deal, e
+                                 * sommare i progetti lo conterebbe due volte.
+                                 */
+                                const dprov = (i && i.prov) || 0;
+                                const mgp = amt > 0 && !viewer && b.ps.length
+                                  ? (amt - all - dprov) / amt : null;
                                 const open = b.ps.some((x) => (x.s || "").toLowerCase().indexOf("progress") >= 0
                                                            || (x.s || "").toLowerCase() === "active");
                                 return (
@@ -1857,13 +1928,26 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                                       <div className="cpmar">
                                         {mg == null ? null : (
                                           <>
-                                            <Gl t={GLOSS.dealmg}>
+                                            {/* L'etichetta resta corta: in questa colonna
+                                                "providers included" la manderebbe a capo e
+                                                lascerebbe "so far" da solo su una riga. La
+                                                precisazione sta sotto, accanto al numero. */}
+                                            <Gl t={dprov ? GLOSS.dealmgp : GLOSS.dealmg}>
                                               Margin on contract{open ? " · so far" : ""}
                                             </Gl>
-                                            <b className={"num " + band(mg)}>{pct(mg)}</b>
+                                            <b className={"num " + band(dprov ? mgp : mg)}>
+                                              {pct(dprov ? mgp : mg)}</b>
                                             <i className="cpo">
                                               {Math.round(allH).toLocaleString("en-GB")} h · {eurK(all)}
+                                              {dprov > 0 && <> · {eurK(dprov)} providers</>}
                                             </i>
+                                            {/* Il margine senza i fornitori resta visibile: dice
+                                                quanto del calo viene da loro e non dalle ore. */}
+                                            {dprov > 0 && (
+                                              <i className="cpo">
+                                                providers included · before them {pct(mg)}
+                                              </i>
+                                            )}
                                           </>
                                         )}
                                       </div>
@@ -2283,6 +2367,106 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
  * comunque di ricordare lo sblocco. Aprirla in una scheda sua toglie di mezzo
  * il problema: compare solo quando serve, cioè solo dentro un iframe.
  */
+/**
+ * Il margine annuo del cliente, con dentro infrastruttura e fornitori.
+ *
+ * Perché un blocco a sé e non tre righe in più in cima. Le due voci non si
+ * comportano come il costo del team: non hanno una data, non stanno su un
+ * progetto, e una delle due è una proiezione. Mescolarle alle caselle del
+ * periodo scelto significherebbe che chi guarda un trimestre vede un margine
+ * schiacciato da dodici mesi di server, e non capisce perché. Qui l'anno è
+ * scritto sopra, la base del costo infrastrutturale è dichiarata, e le due voci
+ * si possono leggere una per volta.
+ *
+ * Le due voci non stanno sullo stesso livello, ed è il punto. Il fornitore
+ * appartiene a un deal: è comprato per un contratto preciso, e il suo posto è
+ * nel margine di quel deal, dove si vede qui sotto, deal per deal. Qui compare
+ * solo la loro somma, per arrivare al conto del cliente. L'infrastruttura
+ * invece esiste solo a livello di cliente: nessun server appartiene a un
+ * contratto, e dividerla fra i deal vorrebbe dire inventare una chiave di
+ * ripartizione — un numero inventato dentro un margine è peggio di un numero
+ * mancante. Per questo è questo blocco, e non il deal, il posto in cui il
+ * cliente si legge per intero.
+ */
+function AnnualMargin({ r, year, infra }) {
+  const rev = r.annRev || 0;
+  const team = r.annCost || 0;
+  const base = rev - team;                     // il margine annuo di sempre
+  const afterI = base - (r.annInfra || 0);
+  const afterP = base - (r.annProv || 0);
+  const afterA = base - (r.annInfra || 0) - (r.annProv || 0);
+  const p = (n) => (rev ? n / rev : null);
+
+  /**
+   * Proiettato o consolidato, detto in chiaro.
+   *
+   * La fonte dà il costo corrente al mese: moltiplicarlo per dodici è una
+   * previsione, non un consuntivo, e chi porta questo numero in una riunione
+   * deve saperlo prima di dirlo. Quando la fonte dichiarerà di essere un
+   * consuntivo, l'etichetta cambia da sola.
+   */
+  const consolidated = infra && infra.basis === "consolidated";
+  const asOf = (infra && infra.as_of) || null;
+  const basisNote = !r.annInfra ? null
+    : consolidated
+      ? `consolidated${asOf ? ` to ${asOf}` : ""}`
+      : `projected${asOf ? ` from the run rate at ${asOf}` : " over twelve months"}`;
+
+  return (
+    <div className="cpann">
+      <div className="cpannh">
+        <span>Annual margin {year}, infrastructure and providers included</span>
+        <i>
+          The providers belong to the deals and are shown on each of them below; the
+          infrastructure exists only at this level, so this is where the client reads whole.
+          {rev === 0 && ` There is no revenue in ${year}, so there is no percentage to show — only the costs.`}
+        </i>
+      </div>
+      <div className="cpanng">
+        <div><span className="cpl">Revenue {year}</span><b className="num">{eur(rev)}</b></div>
+        <div><span className="cpl">Team cost {year}</span><b className="num">{eur(team)}</b></div>
+        <div><Gl t={GLOSS.infra}>Infrastructure, annual</Gl>
+          <b className="num">{r.annInfra ? eur(r.annInfra) : "—"}</b>
+          {basisNote && <i className="cpo">{basisNote}</i>}
+          {r.infraM > 0 && <i className="cpo">{eur(r.infraM)} a month</i>}
+        </div>
+        <div><Gl t={GLOSS.prov}>External providers</Gl>
+          <b className="num">{r.annProv ? eur(r.annProv) : "—"}</b>
+          {r.annProv > 0 && (
+            <i className="cpo">
+              {r.provd ? `${r.provd.length} deal${r.provd.length > 1 ? "s" : ""}, each shown below` : "from the deals"}
+              {" · undated, charged in full to "}{year}
+            </i>
+          )}
+        </div>
+      </div>
+      <div className="cpanng out">
+        <div><span className="cpl">Margin on the team alone</span>
+          <b className="num">{eur(base)}</b>
+          {p(base) != null && <i className={"cpo pcts " + band(p(base))}>{pct(p(base))}</i>}
+        </div>
+        <div><Gl t={GLOSS.annonly}>After infrastructure only</Gl>
+          <b className="num">{r.annInfra ? eur(afterI) : "—"}</b>
+          {r.annInfra > 0 && p(afterI) != null &&
+            <i className={"cpo pcts " + band(p(afterI))}>{pct(p(afterI))}</i>}
+        </div>
+        <div><Gl t={GLOSS.annonly}>After providers only</Gl>
+          <b className="num">{r.annProv ? eur(afterP) : "—"}</b>
+          {r.annProv > 0 && p(afterP) != null &&
+            <i className={"cpo pcts " + band(p(afterP))}>{pct(p(afterP))}</i>}
+        </div>
+        {/* In rosso quando il cliente, a conti fatti, costa più di quanto rende:
+            il verde della voce di riepilogo su un numero negativo si legge come
+            un buon risultato anche con il meno davanti. */}
+        <div className="all"><Gl t={GLOSS.allin}>After both</Gl>
+          <b className={"num big" + (afterA < 0 ? " neg" : "")}>{eur(afterA)}</b>
+          {p(afterA) != null && <i className={"cpo pcts " + band(p(afterA))}>{pct(p(afterA))}</i>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function NewTabLink() {
   const [framed, setFramed] = useState(false);
   useEffect(() => {
@@ -2430,6 +2614,32 @@ function MenuBar({ token, missing, gaps, view, viewer, canUnlock, snap, dl }) {
     </div>
   );
 
+  const fileRef = useRef(null);
+  const [busy, setBusy] = useState(false);
+  const [upMsg, setUpMsg] = useState(null);
+
+  /**
+   * Che cosa c'e' caricato adesso.
+   *
+   * Prima di caricare un file e' giusto vedere che cosa sta sostituendo: il
+   * mese dei costi, quanti clienti sono stati abbinati e quanti nomi sono
+   * rimasti fuori. Un nome fuori e' un cliente il cui margine non porta la sua
+   * infrastruttura, e si legge qui piuttosto che in una pagina di diagnostica.
+   */
+  const ix = (snap.extra_costs && snap.extra_costs.infra) || null;
+  const infraNote = !ix || !ix.configured
+    ? "No infrastructure cost loaded yet. Until one is, every margin on this page is the " +
+      "margin before infrastructure."
+    : `${ix.clients_with_cost} client${ix.clients_with_cost === 1 ? "" : "s"} carry an ` +
+      `infrastructure cost${snap.totals && snap.totals.infra_monthly
+        ? ` — ${eur(snap.totals.infra_monthly)} a month, ${eur(snap.totals.infra)} a year`
+        : ""}` +
+      `${ix.as_of ? `, from the run rate at ${ix.as_of}` : ""}. ` +
+      (ix.unmatched && ix.unmatched.length
+        ? `${ix.unmatched.length} name${ix.unmatched.length === 1 ? " is" : "s are"} still ` +
+          "unmatched, so that cost is in no margin."
+        : "Every name in the file found a client.");
+
   const item = (label, onClick, opts) => {
     const o = opts || {};
     return (
@@ -2442,6 +2652,42 @@ function MenuBar({ token, missing, gaps, view, viewer, canUnlock, snap, dl }) {
   };
 
   const fixes = (missing > 0 ? 1 : 0) + (gaps && gaps.hours > 0 ? 1 : 0);
+
+  /**
+   * Il caricamento del rendiconto del cluster.
+   *
+   * Il file non viene letto dal browser per decidere qualcosa: viene spedito e
+   * basta, ed e' il server a validarlo. Se la validazione fallisce il messaggio
+   * che torna e' quello del server, non una supposizione del client: cosi' chi
+   * carica un file sbagliato legge perche' e' stato rifiutato.
+   */
+  const onPick = async (e) => {
+    const f = e.target.files && e.target.files[0];
+    e.target.value = "";
+    if (!f) return;
+    setBusy(true); setUpMsg(null);
+    try {
+      const text = await f.text();
+      const res = await fetch("/api/infra-upload" + (token ? "?k=" + encodeURIComponent(token) : ""), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: text,
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok || !j.ok) {
+        setUpMsg({ err: true, t: j.error || ("the upload failed with HTTP " + res.status) });
+      } else {
+        setUpMsg({
+          t: `${j.clients} clients, ${eur(j.monthly_total)} a month (${eur(j.annual_total)} a year` +
+             `${j.costs_as_of ? ", costs as of " + j.costs_as_of : ""}). ` +
+             "Press Reload now to rebuild the page.",
+        });
+      }
+    } catch (err) {
+      setUpMsg({ err: true, t: String(err.message || err) });
+    }
+    setBusy(false);
+  };
 
   return (
     <div className="exportbar">
@@ -2505,6 +2751,25 @@ function MenuBar({ token, missing, gaps, view, viewer, canUnlock, snap, dl }) {
           </>
         ), fixes || null)}
 
+        {/*
+          Il caricamento dei costi del cluster. Sta in un menu suo e non fra gli
+          export perche' e' l'unica cosa in questa pagina che scrive invece di
+          leggere, e va tenuta distinguibile.
+        */}
+        {menu("infra", "Infrastructure costs", (
+          <>
+            {infraNote && <div className="mb-note ok">{infraNote}</div>}
+            {item(busy ? "Uploading…" : "Upload the cluster report (JSON)",
+              () => { if (!busy) fileRef.current && fileRef.current.click(); },
+              { lock: viewer,
+                hint: viewer ? "unlock the internal costs first"
+                             : "the data.json of the cluster report, per client and per month" })}
+            {upMsg && <div className={"mb-note" + (upMsg.err ? " warn" : " ok")}>{upMsg.t}</div>}
+            {item("How the infrastructure cost works", () => { setOpen(null); setHelp("infra"); },
+              { hint: "monthly against annual, projected against paid, and the names" })}
+          </>
+        ))}
+
         {menu("help", "How to read this", (
           <>
             {HELP.map((h) => item(h.t, () => { setOpen(null); setHelp(h.k); }, { hint: h.s }))}
@@ -2554,6 +2819,12 @@ function MenuBar({ token, missing, gaps, view, viewer, canUnlock, snap, dl }) {
                   aria-label="Hide this message">×</button>
         </div>
       )}
+      {/* Il campo sta qui e non dentro il menu: il menu si chiude al click, e
+          chiudendosi porterebbe via l'elemento prima che il browser apra la
+          finestra di scelta del file. */}
+      <input ref={fileRef} type="file" accept="application/json,.json"
+             onChange={onPick} hidden />
+
       {ask !== null && <UnlockDialog reason={ask} onClose={() => setAsk(null)} />}
       {help && <HelpDialog topic={help} snap={snap} onClose={() => setHelp(null)} />}
     </div>

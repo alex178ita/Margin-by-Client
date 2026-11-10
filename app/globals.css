@@ -717,6 +717,48 @@ th.has-gl { cursor: help; }
   color: #7c8d95; font-weight: 600;
 }
 .cphead span + span { text-align: right; }
+/* Il blocco del margine annuo.
+   Sta fra le caselle del periodo e i deal, con un bordo suo, perché i numeri
+   che porta non seguono il selettore in alto: hanno un anno scritto sopra. Il
+   colore è il verde della dashboard e non l'ambra della gestione, che segnala
+   un problema; qui non c'è niente da sistemare, c'è un conto in più. */
+.cpann {
+  background: #fff; border: 1px solid #dde6e6; border-left: 3px solid #0f7173;
+  border-radius: 6px; padding: 12px 16px 14px; margin-bottom: 16px;
+}
+.cpannh {
+  font-size: 9.5px; letter-spacing: .09em; text-transform: uppercase;
+  color: #0f7173; font-weight: 700; margin-bottom: 11px;
+}
+.cpannh i {
+  display: block; margin-top: 3px; font-style: normal; font-weight: 500;
+  font-size: 11px; letter-spacing: 0; text-transform: none; color: #5a6b74;
+}
+.cpanng {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px 20px;
+}
+.cpanng > div { min-width: 0; }
+.cpanng b { font-size: 14px; color: #16212b; font-weight: 600; }
+.cpanng b.big { font-size: 20px; }
+.cpanng .cpo { display: block; margin-top: 2px; font-size: 10.5px; }
+/* La percentuale accanto all'importo porta il colore della fascia. Le tre
+   regole sono qualificate perché `.cpo` è definita dopo `.g/.a/.b` e, a parità
+   di specificità, vincerebbe il grigio. */
+.cpanng .cpo.pcts { font-weight: 600; font-size: 12px; }
+.cpanng .cpo.pcts.g { color: var(--ok); }
+.cpanng .cpo.pcts.a { color: var(--warn); }
+.cpanng .cpo.pcts.b { color: var(--bad); }
+/* La seconda riga è quella delle conclusioni: si stacca dalla prima, che è
+   quella degli addendi. */
+.cpanng.out {
+  margin-top: 12px; padding-top: 12px; border-top: 1px solid #edf1f3;
+}
+.cpanng .all b { color: #0f7173; }
+.cpanng .all b.neg { color: var(--bad); }
+@media (max-width: 1100px) {
+  .cpanng { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
 .cpwhat {
   margin: 0 0 7px; padding: 0 2px;
   font-size: 9.5px; letter-spacing: .09em; text-transform: uppercase;
