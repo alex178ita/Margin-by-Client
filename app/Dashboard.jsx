@@ -927,6 +927,15 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
             : costPerYear && c.cy && c.cy[annYear] ? c.cy[annYear].cost : null,
           annInfra: c.infra || 0,
           annProv: c.prov || 0,
+          // La percentuale dopo tutto, quella che sta in tabella. Senza ricavo
+          // dell'anno non c'e' un rapporto da scrivere: resta vuota invece di
+          // diventare uno zero che sembra un risultato.
+          annPct: (() => {
+            if (!hasCost || !costPerYear || !c.cy || !c.cy[annYear]) return null;
+            const ar = annOf(c);
+            if (!ar) return null;
+            return (ar - c.cy[annYear].cost - (c.infra || 0) - (c.prov || 0)) / ar;
+          })(),
           // Le stesse due percentuali con dentro anche il debug interno.
           marginPctIn: cost == null || rev === 0 || !icost ? null : (rev - cost - icost) / rev,
           marginPctAmtIn: c.cost == null || !c.amt || !c.icost
@@ -948,6 +957,7 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
       : key === "margin" ? (r.margin == null ? -Infinity : r.margin)
       : key === "pct" ? (r.marginPct == null ? -Infinity : r.marginPct)
       : key === "pctall" ? (r.marginPctAll == null ? -Infinity : r.marginPctAll)
+      : key === "pctann" ? (r.annPct == null ? -Infinity : r.annPct)
       : key === "hrs" ? (r.hours == null ? -Infinity : r.hours)
       : key === "ifix" ? (r.ihours || 0)
       : key === "mgmt" ? (r.mgmtCost || 0)
@@ -980,6 +990,25 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
       marginPct: cost == null || revenue === 0 ? null : (revenue - cost) / revenue,
       marginAll: costAll == null ? null : revAll - costAll,
       marginPctAll: costAll == null || !revAll ? null : (revAll - costAll) / revAll,
+      /**
+       * Il margine annuo di tutti i clienti insieme, dopo ogni costo.
+       *
+       * Si somma su chi ha un costo nell'anno e si salta chi non ce l'ha: un
+       * cliente senza costo registrato porterebbe il suo ricavo al
+       * denominatore e nessun costo al numeratore, gonfiando il totale. Non e'
+       * la media delle percentuali di riga, che pesa un cliente da mille euro
+       * come uno da mezzo milione.
+       */
+      annInfra: rows.reduce((s, r) => s + (r.annCost != null ? r.annInfra || 0 : 0), 0),
+      annProv: rows.reduce((s, r) => s + (r.annCost != null ? r.annProv || 0 : 0), 0),
+      annPct: (() => {
+        const live = rows.filter((r) => r.annCost != null && r.annRev);
+        const rv = live.reduce((s, r) => s + r.annRev, 0);
+        if (!rv) return null;
+        const left = live.reduce(
+          (s, r) => s + (r.annRev - r.annCost - (r.annInfra || 0) - (r.annProv || 0)), 0);
+        return left / rv;
+      })(),
     };
   }, [rows, costUsable, viewer, snap, year, hasCost]);
 
@@ -1285,6 +1314,7 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
         )}
 
         <MenuBar token={token} viewer={viewer} canUnlock={canUnlock} snap={snap} dl={dl}
+                 rehref={rehref}
                  missing={(snap.links && snap.links.crmid_missing) || 0}
                  gaps={snap.cost_gaps || null}
                  view={{ year, q, noExecus }} />
@@ -1393,6 +1423,25 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
               {hasCost ? pct(tot.marginPctAll) + " of revenue, every year together" : "≥ 30% green, < 0 red"}
             </div>
           </div>
+          {/* Il totale dopo ogni costo. Sta accanto agli altri due margini
+              perché è la stessa domanda posta fino in fondo, e porta l'anno
+              scritto sopra perché è l'unico dei tre che non segue il
+              selettore. */}
+          {!viewer && (
+            <div className={"kpi" + (tot.annPct != null ? "" : " empty")}>
+              <div className="k">All-in margin — {annYear}</div>
+              <div className={"v num " + band(tot.annPct)}>
+                {tot.annPct == null ? "—" : pct(tot.annPct)}
+              </div>
+              <div className="s">
+                {tot.annPct == null
+                  ? "revenue less team, providers and infrastructure"
+                  : (tot.annInfra || tot.annProv)
+                    ? `after ${eurK(tot.annInfra)} infrastructure and ${eurK(tot.annProv)} providers`
+                    : "no infrastructure or provider cost recorded yet, so this is the team alone"}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="conc">
@@ -1437,6 +1486,12 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                 {/* Con "All" selezionato i due margini coincidono: la seconda
                     colonna compare solo quando c'è un anno da affiancare. */}
                 {year !== "all" && th("pctall", "Margin % all time", true)}
+                {/* Il margine annuo di tutto: ore, fornitori dei deal e
+                    infrastruttura. Porta l'anno nel titolo perché non segue il
+                    selettore quando è su "All" — li' prende l'ultimo anno, e una
+                    colonna che non dice di quale anno parla è peggio che
+                    assente. Il dettaglio delle tre voci sta nel pannello. */}
+                {!viewer && th("pctann", "All-in margin % " + annYear, true)}
                 {/* Ore su difetti nostri: fuori dal margine, ma non nascoste. */}
                 {th("ifix", "Internal fix h", true)}
                 {th("ltv", "Lifetime value", true)}
@@ -1563,6 +1618,17 @@ export default function Dashboard({ snap, warning, token, role, canUnlock }) {
                     {year !== "all" && (
                       <td className={"r num dim " + band(r.marginPctAll)}>
                         {r.marginPctAll == null ? <span className="na">—</span> : pct(r.marginPctAll)}
+                      </td>
+                    )}
+                    {!viewer && (
+                      <td className={"r num " + band(r.annPct)}
+                          title={r.annPct == null
+                            ? "no cost recorded for " + annYear + ", so there is no annual margin"
+                            : `${annYear}: ${eur(r.annRev)} revenue, ${eur(r.annCost)} team` +
+                              (r.annProv ? `, ${eur(r.annProv)} providers` : "") +
+                              (r.annInfra ? `, ${eur(r.annInfra)} infrastructure` : "") +
+                              (r.annProv || r.annInfra ? "" : " — neither extra cost recorded yet")}>
+                        {r.annPct == null ? <span className="na">—</span> : pct(r.annPct)}
                       </td>
                     )}
                     <td className="r num ifix"
@@ -2579,7 +2645,7 @@ function UnlockDialog({ onClose, reason }) {
  * come si leggono i numeri — tengono la stessa roba in un terzo dello spazio e
  * dicono a che categoria appartiene ogni voce.
  */
-function MenuBar({ token, missing, gaps, view, viewer, canUnlock, snap, dl }) {
+function MenuBar({ token, missing, gaps, view, viewer, canUnlock, snap, dl, rehref }) {
   const { msg, tick } = dl;
   const [open, setOpen] = useState(null);
   const [ask, setAsk] = useState(null);
@@ -2830,7 +2896,20 @@ function MenuBar({ token, missing, gaps, view, viewer, canUnlock, snap, dl }) {
                          (infraLoaded ? `, loaded ${infraLoaded}` : "") +
                          " · a new file replaces it entirely"
                        : "the data.json of the cluster report, per client and per month" })}
-            {upMsg && <div className={"mb-note" + (upMsg.err ? " warn" : " ok")}>{upMsg.t}</div>}
+            {/* Il pulsante per ricaricare sta dentro la nota, non altrove.
+                Il file e' sul server appena il messaggio compare — chiudere il
+                menu non annulla niente — ma per vederlo serve una lettura
+                nuova, e mandare qualcuno a cercare "Reload now" in fondo alla
+                pagina dopo avergli detto "fatto" e' il modo piu' rapido per
+                fargli credere che non sia successo niente. */}
+            {upMsg && (
+              <div className={"mb-note" + (upMsg.err ? " warn" : " ok")}>
+                {upMsg.t}
+                {!upMsg.err && (
+                  <a className="mb-reload" href={rehref}>Reload the page now</a>
+                )}
+              </div>
+            )}
             {item("How the infrastructure cost works", () => { setOpen(null); setHelp("infra"); },
               { hint: "monthly against annual, projected against paid, and the names" })}
           </>
